@@ -39,7 +39,10 @@ import {
 } from './lib/hlciRouter';
 import { colorizeRoute, type ColoringMode } from './lib/routeColoring';
 import { colorizeStreets } from './lib/streetSunColoring';
-import { projectShadows } from './lib/buildingShadows';
+import {
+  filterBuildingsNearPolyline,
+  projectShadows,
+} from './lib/buildingShadows';
 import {
   classifyGlassReason,
   computeGlareHotspot,
@@ -345,7 +348,18 @@ export default function App() {
     windowSize.h,
   ]);
 
-  const overpass = useOverpassData(overpassBbox);
+  // Lazy-load Overpass: don't fetch anything until the user has picked
+  // a destination. The no-destination map load stays close to zero
+  // network beyond the basemap tiles. extendedStreets flips on once we
+  // have route candidates, widening the highway-tier filter to
+  // tertiary + residential so the route polyline can score against
+  // side streets.
+  const overpassEnabled = destination !== null;
+  const overpassExtendedStreets = candidates.length > 0;
+  const overpass = useOverpassData(
+    overpassEnabled ? overpassBbox : null,
+    overpassExtendedStreets,
+  );
 
   // Per-segment continuous exposure for every viewport street. This single
   // computation is the source of truth — the renderer reads .color from
@@ -358,21 +372,26 @@ export default function App() {
   // change), or the live cloud cover ticks. Per-render execution does
   // NOT touch this; per-frame deck.gl renders just consume the cached
   // array.
-  const streetExposures = useMemo(
-    () =>
-      colorizeStreets(
-        overpass.streets,
-        solar.azimuthDeg,
-        solar.elevationDeg,
-        weather?.cloudCoverPct ?? 0,
-      ),
-    [
+  //
+  // DEFERRED on initial load — when no route candidates exist we skip
+  // the whole colorize pass and return []. The street-sun overlay only
+  // renders once the user has picked a destination and the Routes API
+  // has returned candidates, so the no-destination load stays snappy.
+  const streetExposures = useMemo(() => {
+    if (candidates.length === 0) return [];
+    return colorizeStreets(
       overpass.streets,
       solar.azimuthDeg,
       solar.elevationDeg,
-      weather?.cloudCoverPct,
-    ],
-  );
+      weather?.cloudCoverPct ?? 0,
+    );
+  }, [
+    candidates.length,
+    overpass.streets,
+    solar.azimuthDeg,
+    solar.elevationDeg,
+    weather?.cloudCoverPct,
+  ]);
 
   // (streetIndex previously feeding scoreAndRankRoutes was removed —
   //  scoring now uses the unified classifier so the route polyline visual
@@ -445,19 +464,33 @@ export default function App() {
     return [...overpass.buildings, ...solarBuildings];
   }, [overpass.buildings, solarApi.buildings]);
 
-  // PERF: building-shadow projection runs once per (buildings, sunAz,
-  // sunElev) tuple, not per render or per frame. mergedBuildings is
-  // itself a useMemo, so identity is stable until Overpass or the
-  // Solar-API buildings list changes; sun deps only tick every 10 min
-  // (or instantly when the user picks a planned time).
+  // Buildings filtered to a 200 m corridor around any candidate route
+  // polyline before shadow projection. The full mergedBuildings array
+  // can be a few thousand polygons in dense Midtown — projecting all
+  // of them every sun tick is wasted work since the routes only see
+  // shadows near their own paths. We union over ALL candidates (not
+  // just the selected one) because the user can flip between them and
+  // each one needs shadow context for its own segments.
+  const shadowSourceBuildings = useMemo<Building[]>(() => {
+    if (candidatePolylines.length === 0) return [];
+    const allPoints = candidatePolylines.flat();
+    if (allPoints.length < 2) return [];
+    return filterBuildingsNearPolyline(mergedBuildings, allPoints, 200);
+  }, [mergedBuildings, candidatePolylines]);
+
+  // PERF: building-shadow projection runs once per (filteredBuildings,
+  // sunAz, sunElev) tuple, not per render or per frame. The filtered
+  // input is itself a useMemo, so identity is stable until the route,
+  // OSM buildings, or Solar-API buildings list changes; sun deps only
+  // tick every 10 min (or instantly when the user picks a planned time).
   const buildingShadows = useMemo(
     () =>
       projectShadows(
-        mergedBuildings,
+        shadowSourceBuildings,
         solar.azimuthDeg,
         solar.elevationDeg,
       ),
-    [mergedBuildings, solar.azimuthDeg, solar.elevationDeg],
+    [shadowSourceBuildings, solar.azimuthDeg, solar.elevationDeg],
   );
 
   // ---- glass-glare hotspots --------------------------------------

@@ -378,9 +378,14 @@ export function RouteSheet({
 
         <div className="space-y-2 px-3 pb-3">
           {isLoading ? (
-          <div className="flex items-center gap-3 px-3 py-5 text-sm text-[var(--gma-text-secondary)]">
-            <Spinner color={dayAccent} />
-            Finding routes…
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 px-3 py-2 text-sm text-[var(--gma-text-secondary)]">
+              <Spinner color={dayAccent} />
+              Finding routes…
+            </div>
+            <SkeletonRouteCard />
+            <SkeletonRouteCard />
+            <SkeletonRouteCard />
           </div>
         ) : routes.length === 0 ? (
           <div className="px-3 py-5 text-center text-sm text-[var(--gma-text-secondary)]">
@@ -576,6 +581,41 @@ function NavIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z" />
     </svg>
+  );
+}
+
+function SkeletonRouteCard() {
+  // Subtle shimmering placeholder matching the RouteCard's 64 px min
+  // height. Uses CSS animate-pulse so the demo feels responsive while
+  // the Routes API + Solar API are still in flight.
+  return (
+    <div
+      aria-hidden="true"
+      className="flex min-h-[64px] w-full animate-pulse items-center gap-3 rounded-xl border p-3"
+      style={{
+        borderColor: 'var(--gma-border)',
+        background: 'rgba(0, 0, 0, 0.02)',
+      }}
+    >
+      <div
+        className="h-5 w-5 shrink-0 rounded-full"
+        style={{ background: 'rgba(0, 0, 0, 0.08)' }}
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div
+          className="h-3.5 w-20 rounded"
+          style={{ background: 'rgba(0, 0, 0, 0.10)' }}
+        />
+        <div
+          className="h-3 w-36 rounded"
+          style={{ background: 'rgba(0, 0, 0, 0.06)' }}
+        />
+      </div>
+      <div
+        className="h-6 w-16 shrink-0 rounded-full"
+        style={{ background: 'rgba(0, 0, 0, 0.06)' }}
+      />
+    </div>
   );
 }
 

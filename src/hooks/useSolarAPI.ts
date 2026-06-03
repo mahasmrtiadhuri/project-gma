@@ -30,11 +30,13 @@
 import { useEffect, useState } from 'react';
 import type { RoutePoint } from '../lib/hlciRouter';
 
-const SAMPLE_INTERVAL_M = 200;
+const SAMPLE_INTERVAL_M = 400;
 const COORD_KEY_DECIMALS = 4; // ~11 m at the equator → coalesces dense samples
-// Cap across ALL candidate polylines combined (post-dedup). 3 typical
-// NYC alternatives × 30 samples = 90 raw, ≈ 50 unique after dedup.
-const MAX_SAMPLES_PER_BATCH = 50;
+// Cap across ALL candidate polylines combined (post-dedup). Each
+// /api/solar call hits Google's metered Solar API and adds latency to
+// the route's first paint, so we keep this tight on mobile.
+const MAX_SAMPLES_PER_BATCH = 15;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const ENDPOINT = '/api/solar';
 
 export interface SolarSample {
@@ -89,7 +91,11 @@ const EMPTY: SolarRouteData = {
   status: 'idle',
 };
 
-const CACHE = new Map<string, Promise<SolarSample>>();
+interface SolarCacheEntry {
+  promise: Promise<SolarSample>;
+  fetchedAt: number;
+}
+const CACHE = new Map<string, SolarCacheEntry>();
 
 /**
  * Sample the Solar API across an array of candidate polylines.
@@ -256,11 +262,13 @@ function fetchSampleCached(lat: number, lng: number): Promise<SolarSample> {
   const roundedLng = roundCoord(lng);
   const key = `${roundedLat}|${roundedLng}`;
   const cached = CACHE.get(key);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.promise;
+  }
   const promise = fetchSample(roundedLat, roundedLng).catch(() =>
     emptySample(roundedLat, roundedLng),
   );
-  CACHE.set(key, promise);
+  CACHE.set(key, { promise, fetchedAt: Date.now() });
   return promise;
 }
 

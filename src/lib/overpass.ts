@@ -73,8 +73,24 @@ export interface OverpassFetchResult {
 
 const EMPTY: OverpassData = { streets: [], trees: [], buildings: [], forests: [] };
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-const CACHE_TTL_MS = 30 * 60 * 1000; //   30 minutes
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000; //  2 hours
 const RETRY_DELAYS_MS = [0, 5_000, 15_000, 30_000];
+
+/**
+ * Query variant — controls how many highway tiers come back. The
+ * default lean set covers the on-screen "main roads" overlay before a
+ * route exists; once a destination is picked we widen to include
+ * tertiary + residential streets so the route polyline can score
+ * against side streets too.
+ */
+export interface OverpassFetchOptions {
+  /**
+   * When false (default): only `primary` and `secondary` highways.
+   * When true: also `tertiary` and `residential`. Caller passes true
+   * once a route is active.
+   */
+  extendedStreets?: boolean;
+}
 
 interface CacheEntry {
   promise: Promise<OverpassFetchResult>;
@@ -83,20 +99,39 @@ interface CacheEntry {
 
 const CACHE = new Map<string, CacheEntry>();
 
-export function fetchOverpassData(bbox: Bbox): Promise<OverpassFetchResult> {
-  const key = bboxKey(bbox);
+export function fetchOverpassData(
+  bbox: Bbox,
+  options: OverpassFetchOptions = {},
+): Promise<OverpassFetchResult> {
+  const extended = options.extendedStreets === true;
+  // Cache key includes the variant so the lean (pre-route) and the
+  // extended (route-active) queries don't collide. The two responses
+  // live side-by-side in the cache — switching to extended after the
+  // user picks a destination triggers one fresh fetch, then both keys
+  // are warm.
+  const key = `${bboxKey(bbox)}#${extended ? 'ext' : 'lean'}`;
   const cached = CACHE.get(key);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
     return cached.promise;
   }
 
-  const promise = fetchWithBackoff(bbox);
+  const promise = fetchWithBackoff(bbox, extended);
   CACHE.set(key, { promise, fetchedAt: Date.now() });
   return promise;
 }
 
-async function fetchWithBackoff(bbox: Bbox): Promise<OverpassFetchResult> {
+async function fetchWithBackoff(
+  bbox: Bbox,
+  extendedStreets: boolean,
+): Promise<OverpassFetchResult> {
   const b = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`;
+  // Highway tier set. Lean default is just primary + secondary — keeps
+  // the no-destination map load cheap. Extended adds tertiary +
+  // residential once a route exists (the route's segment-coloring
+  // needs side-street coverage).
+  const highwayRegex = extendedStreets
+    ? '^(primary|secondary|tertiary|residential)$'
+    : '^(primary|secondary)$';
   // Union query — one round trip covers streets, trees, buildings, and
   // green areas. The tree slice intentionally over-covers: Brooklyn
   // street trees are often tagged `street_tree=yes` or `tree=yes`
@@ -106,7 +141,7 @@ async function fetchWithBackoff(bbox: Bbox): Promise<OverpassFetchResult> {
     '[out:json][timeout:30];' +
     '(' +
     // Streets (route + sun overlay)
-    `way[highway~"^(primary|secondary|tertiary|residential)$"][name](${b});` +
+    `way[highway~"${highwayRegex}"][name](${b});` +
     // Trees — primary tag
     `node[natural=tree](${b});` +
     // Tree-rows + alternate tree tags common in Brooklyn / Queens

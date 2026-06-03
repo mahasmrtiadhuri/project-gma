@@ -2616,3 +2616,68 @@ Start always reachable without scrolling past the cards.
 
 - `tsc -b` clean
 - `vite build` clean (~1.43 MB main chunk, ~16 s)
+
+### 2026-06-03 — Mobile performance pass: lazy-load, smaller queries, longer caches, defer work, skeleton
+
+The Netlify deploy was sluggish on phone-grade hardware — every map load fired Overpass + Solar + per-frame work for streets the user might never look at. Eight changes in one pass to cut the cold-start cost. `tsc -b` + `vite build` clean.
+
+**1. Lazy-load Overpass — only after a destination is picked** ([src/App.tsx](src/App.tsx))
+
+`useOverpassData(overpassEnabled ? overpassBbox : null, …)` with `overpassEnabled = destination !== null`. Before a destination exists the hook keeps its `EMPTY` shape and `status: 'idle'` — no network, no debounce timer, no overpass-side state. The no-destination map load is now basemap-only.
+
+**2. Smaller default Overpass query — primary + secondary only** ([src/lib/overpass.ts](src/lib/overpass.ts), [src/hooks/useOverpassData.ts](src/hooks/useOverpassData.ts))
+
+New `OverpassFetchOptions.extendedStreets?: boolean`:
+
+| Mode | Highway regex | When |
+|---|---|---|
+| lean (default) | `^(primary\|secondary)$` | before any route candidates |
+| extended | `^(primary\|secondary\|tertiary\|residential)$` | once `candidates.length > 0` |
+
+App.tsx passes `extendedStreets = candidates.length > 0`. The lean query returns roughly an order of magnitude fewer ways in dense Midtown — first-fetch budget drops dramatically. Cache key now includes the variant (`<bbox>#lean` vs `<bbox>#ext`) so switching to extended after the user picks a destination triggers one fresh fetch, then both keys are warm.
+
+**3. Debounce 2 s → 3 s** ([src/hooks/useOverpassData.ts](src/hooks/useOverpassData.ts))
+
+`DEBOUNCE_MS = 3_000`. Aggressive pan/zoom on mobile (where momentum scrolling can fire dozens of viewState updates over a few seconds) now collapses to a single fetch.
+
+**4. Cache TTLs extended** ([src/lib/overpass.ts](src/lib/overpass.ts), [src/hooks/useSolarAPI.ts](src/hooks/useSolarAPI.ts))
+
+- Overpass: `30 min → 2 h`. A second session within two hours hits the cache.
+- Solar API: previously had no TTL, just a forever-Map. Wrapped each entry in `{promise, fetchedAt}` with `CACHE_TTL_MS = 60 * 60 * 1000` (1 hour). Solar samples don't meaningfully change over an hour; the cache wins now also reduce metered API spend.
+
+**5. Solar API: fewer + sparser samples** ([src/hooks/useSolarAPI.ts](src/hooks/useSolarAPI.ts))
+
+- `SAMPLE_INTERVAL_M: 200 → 400` (one sample per ~400 m along the route)
+- `MAX_SAMPLES_PER_BATCH: 50 → 15` (cap across all candidate polylines combined)
+
+A typical 3-route NYC selection used to bill ~50 Solar API calls; now ≤ 15. Median first-paint shaves ~3 s on a flaky cell connection.
+
+**6. Defer street-sun overlay computation until route exists** ([src/App.tsx](src/App.tsx))
+
+`streetExposures` useMemo now short-circuits to `[]` when `candidates.length === 0`. The `colorizeStreets` pass (per-segment bearing dot + color synthesis over hundreds of OSM streets) doesn't run on the no-destination load. GMACanvas already skipped the street-sun PathLayer when `streetExposures.length === 0`, so this just makes the upstream cheap too.
+
+**7. Route-corridor building filter for shadows** ([src/lib/buildingShadows.ts](src/lib/buildingShadows.ts), [src/App.tsx](src/App.tsx))
+
+New `filterBuildingsNearPolyline(buildings, polyline, radiusM)` — bbox prefilter at the route extent (padded by `radiusM`), then per-footprint-vertex distance check against each polyline vertex. Kept any building with at least one vertex within `radiusM` of the route.
+
+App.tsx feeds shadow projection through this filter at 200 m radius, using the union of all candidate polylines (so flipping between routes doesn't require a refilter). In dense Midtown that drops `projectShadows` input from ~3 000 polygons to typically 100–300 — projection runs in well under a frame even on a phone.
+
+The `mergedBuildings` array is still the full set for the glass-glare classifier (which runs once per Overpass fetch in a `useEffect`, not per frame). Only the per-sun-tick shadow projection sees the filtered subset.
+
+**8. Skeleton route cards while loading** ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx))
+
+New `SkeletonRouteCard` component: 64 px-tall placeholder matching the real RouteCard's layout (avatar circle, two text bars, percent pill), styled with `animate-pulse` via Tailwind. The route-sheet loading state now renders three of these underneath the "Finding routes…" spinner line. The sheet feels populated and responsive even while the Routes API + Solar API are still in flight.
+
+**Verification cold-start sequence**
+
+1. App opens → basemap tiles only. No Overpass log, no Solar log, no street overlay, no shadows. `[GMA] Glass glare: gate check` still logs (it's gated separately on sun + cloud + buildings, and buildings is still empty).
+2. User picks origin via geolocation auto-fill. Still no Overpass — destination is the gate.
+3. User picks destination. After 3 s debounce: `[GMA] Fetching Overpass data … bboxKey: …#lean`. Lean query returns ~tens of streets in seconds.
+4. Routes API returns candidates → `extendedStreets` flips true → second Overpass fetch (`…#ext`) for the full highway tier set. `streetExposures` populates and the on-map street overlay appears.
+5. Solar API fires for ≤ 15 unique coords across all candidates.
+6. Shadow projection runs on the ~150 buildings within 200 m of any candidate polyline (not the full 3 000-building viewport).
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.43 MB main chunk, ~12 s)
