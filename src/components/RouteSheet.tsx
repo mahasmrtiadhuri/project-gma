@@ -109,6 +109,7 @@ type RouteCondition =
   | 'mostly-sunny'
   | 'partly-shaded'
   | 'mostly-shaded'
+  | 'glare-detected'
   | 'strong-headwind'
   | 'moderate-wind'
   | 'sheltered'
@@ -118,6 +119,9 @@ type RouteCondition =
   | 'snow-sheltered';
 
 function exposureToSunCondition(exposure: number): RouteCondition {
+  // > 1.0 only happens when the route passes through glass-glare segments,
+  // which contribute exposure 1.5 — a regular all-sunny route caps at 1.0.
+  if (exposure > 1.0) return 'glare-detected';
   if (exposure > 0.7) return 'mostly-sunny';
   if (exposure < 0.3) return 'mostly-shaded';
   return 'partly-shaded';
@@ -139,15 +143,16 @@ function exposureToPrecipCondition(
 }
 
 const CONDITION_LABEL: Record<RouteCondition, string> = {
-  'mostly-sunny': 'Mostly sunny',
-  'partly-shaded': 'Partly shaded',
-  'mostly-shaded': 'Mostly shaded',
-  'strong-headwind': 'Strong headwind',
+  'mostly-sunny': 'Full sun ☀️',
+  'partly-shaded': 'Mixed sun & shade ⛅',
+  'mostly-shaded': 'Shaded walk 🌳',
+  'glare-detected': 'Glass glare zone 🔆',
+  'strong-headwind': 'Strong headwind 🌬',
   'moderate-wind': 'Moderate wind',
-  sheltered: 'Sheltered',
-  'rain-exposed': 'Rain exposed',
+  sheltered: 'Wind sheltered',
+  'rain-exposed': 'Rain exposed 💧',
   'rain-sheltered': 'Rain sheltered',
-  'snow-exposed': 'Snow exposed',
+  'snow-exposed': 'Snow exposed ❄',
   'snow-sheltered': 'Snow sheltered',
 };
 
@@ -155,6 +160,7 @@ const CONDITION_COLOR: Record<RouteCondition, string> = {
   'mostly-sunny': 'rgb(234, 88, 12)', //   amber-orange — uncomfortable
   'partly-shaded': 'rgb(180, 130, 20)', // muted gold
   'mostly-shaded': 'rgb(30, 120, 60)', //  green — comfortable
+  'glare-detected': 'rgb(220, 38, 38)', // red-600 — danger
   'strong-headwind': 'rgb(168, 85, 247)', // violet-500 — windy
   'moderate-wind': 'rgb(180, 130, 20)', //  muted gold — middle
   sheltered: 'rgb(30, 120, 60)', //         green — comfortable
@@ -190,6 +196,12 @@ export interface RouteSheetProps {
   precipitationProbability: number;
   /** Rain vs snow vs none — switches the condition chip label + color. */
   precipitationType: PrecipitationType;
+  /**
+   * Live wind speed in mph. Feeds the wind-mode feels-like badges
+   * (`~6 mph headwind`) and the wind delta on the GMA comparison line.
+   * 0 → "Calm" label across the wind filter.
+   */
+  windSpeedMph: number;
 }
 
 /**
@@ -211,8 +223,8 @@ export function RouteSheet({
   geminiBusy,
   precipitationProbability,
   precipitationType,
+  windSpeedMph,
 }: RouteSheetProps) {
-  const verb = FILTER_META[filterMode].verb;
   const canStart = !isLoading && routes.length > 0;
   const dayAccent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   const sunDirection = filterToSunDirection(filterMode);
@@ -417,18 +429,23 @@ export function RouteSheet({
                   (comfort.durationSeconds - fastest.durationSeconds) / 60,
                 ),
               );
-              const expDelta = computeExposureDelta(
+              const delta = computeFeelsLikeDelta(
                 fastest,
                 comfort,
                 filterMode,
+                windSpeedMph,
               );
+              // Silence the now-unused relative percent helpers when
+              // building feels-like badges — kept around for future
+              // a11y disclosure / debug surface but not the visible UI.
+              void isRainFilter;
+              void routeComfortPercent;
+              void routeRainComfortPercent;
+              void routeWindComfortPercent;
+              void sunDirection;
 
-              const percentFor = (route: ScoredRoute) =>
-                isRainFilter
-                  ? routeRainComfortPercent(route, routes, 'sheltered')
-                  : isWindFilter
-                    ? routeWindComfortPercent(route, routes, 'sheltered')
-                    : routeComfortPercent(route, routes, sunDirection);
+              const getComfortBadge = (route: ScoredRoute): ComfortBadge | null =>
+                comfortBadgeFor(route, filterMode, windSpeedMph);
 
               const conditionFor = (route: ScoredRoute): RouteCondition | null =>
                 isRainFilter && route.meanPrecipExposure != null
@@ -448,8 +465,7 @@ export function RouteSheet({
                     <RouteCard
                       variant="combined"
                       route={comfort}
-                      percent={percentFor(comfort)}
-                      verb={verb}
+                      comfortBadge={getComfortBadge(comfort)}
                       condition={conditionFor(comfort)}
                       explanation={null}
                       selected={comfortIdx === selectedRouteIdx}
@@ -474,9 +490,8 @@ export function RouteSheet({
                         onToggle={() => setShowMoreOptions((v) => !v)}
                         selectedRouteIdx={selectedRouteIdx}
                         onSelectRoute={onSelectRoute}
-                        percentFor={percentFor}
+                        comfortBadgeFor={getComfortBadge}
                         conditionFor={conditionFor}
-                        verb={verb}
                         dayAccent={dayAccent}
                         filterMode={filterMode}
                       />
@@ -490,8 +505,7 @@ export function RouteSheet({
                   <RouteCard
                     variant="fastest"
                     route={fastest}
-                    percent={percentFor(fastest)}
-                    verb={verb}
+                    comfortBadge={getComfortBadge(fastest)}
                     condition={conditionFor(fastest)}
                     explanation={null}
                     selected={fastestIdx === selectedRouteIdx}
@@ -501,18 +515,14 @@ export function RouteSheet({
                   />
                   <ComparisonLine
                     timeDeltaMin={timeDeltaMin}
-                    expDelta={expDelta}
+                    delta={delta}
                   />
                   <RouteCard
                     variant="gma"
                     route={comfort}
-                    percent={percentFor(comfort)}
-                    verb={verb}
+                    comfortBadge={getComfortBadge(comfort)}
                     condition={conditionFor(comfort)}
-                    explanation={buildGmaExplanation(
-                      timeDeltaMin,
-                      expDelta,
-                    )}
+                    explanation={buildGmaExplanation(timeDeltaMin, delta)}
                     selected={comfortIdx === selectedRouteIdx}
                     onClick={() => onSelectRoute(comfortIdx)}
                     dayAccent={dayAccent}
@@ -525,9 +535,8 @@ export function RouteSheet({
                       onToggle={() => setShowMoreOptions((v) => !v)}
                       selectedRouteIdx={selectedRouteIdx}
                       onSelectRoute={onSelectRoute}
-                      percentFor={percentFor}
+                      comfortBadgeFor={getComfortBadge}
                       conditionFor={conditionFor}
-                      verb={verb}
                       dayAccent={dayAccent}
                       filterMode={filterMode}
                     />
@@ -566,11 +575,11 @@ type CardVariant = 'fastest' | 'gma' | 'combined' | 'other';
 interface RouteCardProps {
   variant: CardVariant;
   route: ScoredRoute;
-  percent: number;
-  verb: string;
+  /** Feels-like comfort summary shown in the right column. Null hides the badge. */
+  comfortBadge: ComfortBadge | null;
   /** Plain-English condition derived from meanSunExposure; null for non-sun filters. */
   condition: RouteCondition | null;
-  /** One-line "+2 min · 40% less sun exposure" shown under GMA pick cards. */
+  /** One-line "+2 min · Feels ~6°F cooler" shown under GMA pick cards. */
   explanation: string | null;
   selected: boolean;
   onClick: () => void;
@@ -593,8 +602,7 @@ function gmaAccentFor(mode: FilterMode): string {
 function RouteCard({
   variant,
   route,
-  percent,
-  verb,
+  comfortBadge,
   condition,
   explanation,
   selected,
@@ -611,12 +619,6 @@ function RouteCard({
     variant === 'gma' || variant === 'combined' ? gmaAccent : 'transparent';
   const km = (route.distanceMeters / 1000).toFixed(2);
   const min = Math.max(1, Math.round(route.durationSeconds / 60));
-  const badgeColor =
-    percent >= 70
-      ? 'rgb(52, 168, 83)' //   green
-      : percent >= 40
-        ? 'rgb(251, 188, 4)' // amber
-        : 'rgb(234, 67, 53)'; // red
 
   return (
     <button
@@ -702,23 +704,18 @@ function RouteCard({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <div
-          className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
-          style={{ background: 'rgba(0, 0, 0, 0.05)' }}
-        >
+      <div className="flex shrink-0 flex-col items-end gap-1 self-center">
+        {comfortBadge && (
           <span
-            className="inline-block h-2 w-2 rounded-full"
-            style={{ background: badgeColor }}
-            aria-hidden="true"
-          />
-          <span className="text-xs text-[var(--gma-text-primary)]">
-            {percent}%
+            className="whitespace-nowrap text-sm font-semibold"
+            style={{
+              color: comfortBadge.color,
+              fontFamily: 'var(--font-data)',
+            }}
+          >
+            {comfortBadge.text}
           </span>
-          <span className="text-[10px] uppercase tracking-wider text-[var(--gma-text-secondary)]">
-            {verb}
-          </span>
-        </div>
+        )}
         {condition && (
           <span
             className="whitespace-nowrap text-[10px]"
@@ -758,81 +755,173 @@ function NavIcon() {
   );
 }
 
-// ---------- comparison + delta helpers ----------------------------------
+// ---------- "feels like" comfort display helpers -----------------------
+//
+// Replaces the abstract `67% COOLER` badge with human-readable feels-like
+// text per CLAUDE.md §1 (glass-glare claim of up to +15°F felt
+// temperature). Sun routes report `~X°F cooler` / `~X°F warmer`; wind
+// routes report avoided headwind in mph; rain routes report a verbal
+// shelter state. All three keep their qualitative condition chip below
+// the quantitative badge.
 
-interface ExposureDelta {
-  /** Percent reduction (positive = comfort has less exposure). */
-  pct: number;
-  /** "sun" / "wind" / "rain" / "sun + wind". */
-  label: string;
-  /** "less" for cooler filters; "more" for sunniest. */
-  direction: 'less' | 'more';
+const MAX_FEELS_LIKE_DELTA_F = 15;
+
+interface ComfortBadge {
+  /** Primary line — e.g. "~8°F cooler" or "Wind sheltered". */
+  text: string;
+  /** Right-column text color — green for comfort, red for discomfort. */
+  color: string;
 }
 
-function computeExposureDelta(
+function comfortBadgeFor(
+  route: ScoredRoute,
+  filterMode: FilterMode,
+  windSpeedMph: number,
+): ComfortBadge | null {
+  // Wind filter — show mph avoided / wind state.
+  if (filterMode === 'avoid-wind') {
+    if (windSpeedMph < 3) {
+      return { text: 'Calm', color: 'rgb(30, 120, 60)' };
+    }
+    const exposure = route.meanWindExposure ?? 0;
+    if (exposure < 0.3) {
+      return { text: 'Wind sheltered', color: 'rgb(30, 120, 60)' };
+    }
+    const mph = Math.round(exposure * windSpeedMph);
+    return {
+      text: `~${mph} mph headwind`,
+      color: 'rgb(168, 85, 247)',
+    };
+  }
+
+  // Rain filter — verbal only, no temp delta.
+  if (filterMode === 'avoid-rain') {
+    const exposure = route.meanPrecipExposure ?? 0;
+    if (exposure < 0.3) {
+      return { text: 'Rain sheltered 💧', color: 'rgb(6, 182, 212)' };
+    }
+    return { text: 'Less rain exposure', color: 'rgb(71, 85, 105)' };
+  }
+
+  // Sun, sunniest, both, no-preference — use feels-like temp delta.
+  // Glare segments push exposure above 1.0 and amplify the heat felt.
+  const exposure = route.meanSunExposure ?? 0;
+  if (filterMode === 'sunniest') {
+    const warmer = Math.round(
+      Math.min(1, exposure) * MAX_FEELS_LIKE_DELTA_F,
+    );
+    if (warmer < 1) {
+      return { text: 'Same temp', color: 'var(--gma-text-secondary)' };
+    }
+    return {
+      text: `~${warmer}°F warmer`,
+      color: 'rgb(234, 88, 12)',
+    };
+  }
+  // Glare → red "hotter" badge (worse than direct sun).
+  if (exposure > 1.0) {
+    const hotter = Math.round(
+      Math.min(1.5, exposure) * MAX_FEELS_LIKE_DELTA_F,
+    );
+    return {
+      text: `~${hotter}°F hotter`,
+      color: 'rgb(220, 38, 38)',
+    };
+  }
+  const cooler = Math.round((1 - exposure) * MAX_FEELS_LIKE_DELTA_F);
+  if (cooler < 1) {
+    return { text: 'Full sun', color: 'rgb(234, 88, 12)' };
+  }
+  return {
+    text: `~${cooler}°F cooler`,
+    color: 'rgb(30, 120, 60)',
+  };
+}
+
+// ---------- comparison + delta helpers ----------------------------------
+
+/**
+ * Feels-like delta between the fastest and comfort routes — formatted
+ * for the comparison line and the GMA-pick explanation line. Returns
+ * null when there's no meaningful gap (no-preference filter, sub-1°F
+ * temp delta, sub-1 mph wind savings, etc).
+ */
+interface FeelsLikeDelta {
+  /** Human-readable savings phrase: "~6°F cooler" / "~4 mph less headwind" / "less rain exposure". */
+  phrase: string;
+  /** Short version for the GMA explanation under the card: same phrasing minus the OR. */
+  shortPhrase: string;
+}
+
+function computeFeelsLikeDelta(
   fastest: ScoredRoute,
   comfort: ScoredRoute,
   filterMode: FilterMode,
-): ExposureDelta | null {
-  let f: number;
-  let c: number;
-  let label: string;
-  let direction: 'less' | 'more' = 'less';
+  windSpeedMph: number,
+): FeelsLikeDelta | null {
+  if (filterMode === 'no-preference') return null;
 
+  // Wind: mph of headwind avoided. Needs current wind speed; below
+  // 3 mph the delta is too small to advertise.
   if (filterMode === 'avoid-wind') {
-    f = fastest.meanWindExposure ?? 0;
-    c = comfort.meanWindExposure ?? 0;
-    label = 'wind';
-  } else if (filterMode === 'avoid-rain') {
-    f = fastest.meanPrecipExposure ?? 0;
-    c = comfort.meanPrecipExposure ?? 0;
-    label = 'rain';
-  } else if (filterMode === 'avoid-both') {
-    const fSun = fastest.meanSunExposure ?? 0;
-    const fWind = fastest.meanWindExposure ?? 0;
-    const cSun = comfort.meanSunExposure ?? 0;
-    const cWind = comfort.meanWindExposure ?? 0;
-    f = (fSun + fWind) / 2;
-    c = (cSun + cWind) / 2;
-    label = 'sun + wind';
-  } else if (filterMode === 'sunniest') {
-    f = fastest.meanSunExposure ?? 0;
-    c = comfort.meanSunExposure ?? 0;
-    label = 'sun';
-    direction = 'more';
-  } else if (filterMode === 'no-preference') {
-    return null;
-  } else {
-    // avoid-sun
-    f = fastest.meanSunExposure ?? 0;
-    c = comfort.meanSunExposure ?? 0;
-    label = 'sun';
+    if (windSpeedMph < 3) return null;
+    const f = fastest.meanWindExposure ?? 0;
+    const c = comfort.meanWindExposure ?? 0;
+    const mph = Math.round((f - c) * windSpeedMph);
+    if (mph < 1) return null;
+    return {
+      phrase: `avoid ~${mph} mph headwind`,
+      shortPhrase: `Avoids ~${mph} mph headwind`,
+    };
   }
 
-  // Can't normalize when fastest has near-zero exposure.
-  if (f < 0.01) return null;
-  const rawDiff = direction === 'less' ? f - c : c - f;
-  const pct = Math.round((rawDiff / f) * 100);
-  if (pct < 5) return null; //   not a meaningful gap to advertise
-  return { pct, label, direction };
+  // Rain: verbal only — no temp/wind delta makes sense here.
+  if (filterMode === 'avoid-rain') {
+    const f = fastest.meanPrecipExposure ?? 0;
+    const c = comfort.meanPrecipExposure ?? 0;
+    if (f - c < 0.1) return null;
+    return {
+      phrase: 'less rain exposure',
+      shortPhrase: 'Less rain exposure',
+    };
+  }
+
+  // Sun / sunniest / both — feels-like temperature delta.
+  // Glare segments push exposure above 1, amplifying the felt heat.
+  const fSun = Math.max(0, Math.min(1.5, fastest.meanSunExposure ?? 0));
+  const cSun = Math.max(0, Math.min(1.5, comfort.meanSunExposure ?? 0));
+  const direction =
+    filterMode === 'sunniest'
+      ? ('warmer' as const)
+      : ('cooler' as const);
+  const raw =
+    direction === 'cooler'
+      ? (fSun - cSun) * MAX_FEELS_LIKE_DELTA_F
+      : (cSun - fSun) * MAX_FEELS_LIKE_DELTA_F;
+  const degrees = Math.round(raw);
+  if (degrees < 1) return null;
+  return {
+    phrase: `feel ~${degrees}°F ${direction}`,
+    shortPhrase: `Feels ~${degrees}°F ${direction}`,
+  };
 }
 
 function buildGmaExplanation(
   timeDeltaMin: number,
-  expDelta: ExposureDelta | null,
+  delta: FeelsLikeDelta | null,
 ): string | null {
-  if (!expDelta) return null;
+  if (!delta) return null;
   const time = timeDeltaMin === 0 ? 'Same time' : `+${timeDeltaMin} min`;
-  return `${time} · ${expDelta.pct}% ${expDelta.direction} ${expDelta.label} exposure`;
+  return `${time} · ${delta.shortPhrase}`;
 }
 
 interface ComparisonLineProps {
   timeDeltaMin: number;
-  expDelta: ExposureDelta | null;
+  delta: FeelsLikeDelta | null;
 }
 
-function ComparisonLine({ timeDeltaMin, expDelta }: ComparisonLineProps) {
-  if (!expDelta) return null;
+function ComparisonLine({ timeDeltaMin, delta }: ComparisonLineProps) {
+  if (!delta) return null;
   const timeWord =
     timeDeltaMin <= 0
       ? 'no extra time'
@@ -845,8 +934,7 @@ function ComparisonLine({ timeDeltaMin, expDelta }: ComparisonLineProps) {
         fontFamily: 'var(--font-data)',
       }}
     >
-      Save {timeWord} OR save {expDelta.pct}% {expDelta.label} exposure — your
-      choice.
+      Save {timeWord} OR {delta.phrase} — your choice.
     </div>
   );
 }
@@ -857,9 +945,8 @@ interface MoreOptionsSectionProps {
   onToggle: () => void;
   selectedRouteIdx: number;
   onSelectRoute: (idx: number) => void;
-  percentFor: (route: ScoredRoute) => number;
+  comfortBadgeFor: (route: ScoredRoute) => ComfortBadge | null;
   conditionFor: (route: ScoredRoute) => RouteCondition | null;
-  verb: string;
   dayAccent: string;
   filterMode: FilterMode;
 }
@@ -870,9 +957,8 @@ function MoreOptionsSection({
   onToggle,
   selectedRouteIdx,
   onSelectRoute,
-  percentFor,
+  comfortBadgeFor: getComfortBadge,
   conditionFor,
-  verb,
   dayAccent,
   filterMode,
 }: MoreOptionsSectionProps) {
@@ -902,8 +988,7 @@ function MoreOptionsSection({
               key={`other-${idx}-${route.label}`}
               variant="other"
               route={route}
-              percent={percentFor(route)}
-              verb={verb}
+              comfortBadge={getComfortBadge(route)}
               condition={conditionFor(route)}
               explanation={null}
               selected={idx === selectedRouteIdx}

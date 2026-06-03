@@ -797,7 +797,13 @@ export default function App() {
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
     setNavigating(true);
-    setToastMessage(buildStartToast(selectedRoute));
+    setToastMessage(
+      buildStartToast(
+        selectedRoute,
+        filterMode,
+        weather?.windSpeedMph ?? 0,
+      ),
+    );
   };
 
   const handleStopNavigation = () => {
@@ -981,6 +987,7 @@ export default function App() {
           geminiBusy={geminiBusy}
           precipitationProbability={weather?.precipitationProbability ?? 0}
           precipitationType={weather?.precipitationType ?? 'none'}
+          windSpeedMph={weather?.windSpeedMph ?? 0}
         />
       )}
 
@@ -1051,20 +1058,60 @@ export default function App() {
 }
 
 /**
- * Build the Start-navigation toast text from the selected route's
- * meanSunExposure. Routes with very low exposure (< 0.3) get the leaf
- * emoji + condition label; everything else gets the sun emoji + the
- * absolute "X% Cooler" percentage. Wind / no-preference filters still
- * trigger a meaningful toast since meanSunExposure is computed
- * regardless of the active filter.
+ * Build the Start-navigation toast — human-readable feels-like delta
+ * with an emoji that matches the filter or route condition. Replaces
+ * the old percentage-based toast.
+ *
+ *   Mostly shaded route → "🌳 Finding you the coolest route"
+ *   Cooler than average → "🌳 Feels ~6°F cooler"
+ *   Sunniest mode       → "☀️ Catching maximum sun · ~9°F warmer"
+ *   Wind filter         → "🌬 Sheltered from wind · ~5 mph less"
+ *   Rain filter         → "💧 Sheltered from rain"
+ *   Glare route         → "🔆 Heads-up: route passes glass glare"
  */
-function buildStartToast(route: ScoredRoute): string {
-  const exposure = route.meanSunExposure ?? 0.5;
-  if (exposure < 0.3) {
-    return '🌿 Mostly Shaded Route Selected';
+function buildStartToast(
+  route: ScoredRoute,
+  filterMode: FilterMode,
+  windSpeedMph: number,
+): string {
+  const MAX_DELTA = 15;
+  const sunExposure = route.meanSunExposure ?? 0.5;
+  const windExposure = route.meanWindExposure ?? 0;
+  const precipExposure = route.meanPrecipExposure ?? 0;
+
+  if (filterMode === 'avoid-rain') {
+    if (precipExposure < 0.3) return '💧 Sheltered from rain';
+    return '💧 Less rain on this route';
   }
-  const coolerPct = Math.round((1 - exposure) * 100);
-  return `☀️ ${coolerPct}% Cooler Route Selected`;
+  if (filterMode === 'avoid-wind') {
+    if (windSpeedMph < 3) return '🌬 Calm winds out there';
+    if (windExposure < 0.3) return '🌬 Sheltered from wind';
+    const savedMph = Math.max(
+      0,
+      Math.round((1 - windExposure) * windSpeedMph),
+    );
+    return savedMph > 0
+      ? `🌬 ~${savedMph} mph less headwind on this route`
+      : '🌬 Less wind on this route';
+  }
+  if (filterMode === 'sunniest') {
+    const warmer = Math.round(
+      Math.max(0, Math.min(1, sunExposure)) * MAX_DELTA,
+    );
+    return warmer > 0
+      ? `☀️ Catching maximum sun · ~${warmer}°F warmer`
+      : '☀️ Catching maximum sun';
+  }
+  if (sunExposure > 1.0) {
+    return '🔆 Heads-up: route passes glass glare';
+  }
+  if (sunExposure < 0.3) {
+    return '🌳 Finding you the coolest route';
+  }
+  const cooler = Math.round((1 - sunExposure) * MAX_DELTA);
+  return cooler > 0
+    ? `🌳 Feels ~${cooler}°F cooler`
+    : '🌳 Best comfort GMA could find';
 }
 
 

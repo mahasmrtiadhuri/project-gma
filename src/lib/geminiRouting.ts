@@ -175,32 +175,34 @@ export function mapInterpretation(interp: GeminiInterpretation): MappedPreferenc
   const wantsAvoidWind = interp.windPreference === 'avoid_wind';
 
   let filterMode: FilterMode;
-  let toastVerb: string;
+  // Human-readable feels-like phrasing with a matching emoji. Replaces
+  // the previous abstract "routing for X" verbs.
+  let toastMessage: string;
 
   if (wantsSun) {
     filterMode = 'sunniest';
-    toastVerb = 'finding the sunniest route';
+    toastMessage = 'Got it — finding you the sunniest route ☀️';
   } else if (wantsAvoidSun && wantsAvoidWind) {
     filterMode = 'avoid-both';
-    toastVerb =
+    toastMessage =
       interp.intensity === 'high'
-        ? 'aggressively avoiding sun and wind'
-        : 'avoiding sun and wind';
+        ? 'Got it — finding you the coolest, calmest route 🌳🌬'
+        : 'Got it — finding cooler, calmer streets 🌳🌬';
   } else if (wantsAvoidSun) {
     filterMode = 'avoid-sun';
-    toastVerb =
+    toastMessage =
       interp.intensity === 'high'
-        ? 'routing for maximum shade'
-        : 'routing for shade';
+        ? 'Got it — finding you the coolest route 🌳'
+        : 'Got it — finding shadier streets 🌳';
   } else if (wantsAvoidWind) {
     filterMode = 'avoid-wind';
-    toastVerb =
+    toastMessage =
       interp.intensity === 'high'
-        ? 'avoiding strong headwinds'
-        : 'avoiding headwinds';
+        ? 'Got it — finding you the most sheltered route 🌬'
+        : 'Got it — avoiding the worst headwinds 🌬';
   } else {
     filterMode = 'no-preference';
-    toastVerb = 'no specific preference';
+    toastMessage = 'Got it — no specific preference';
   }
 
   const intensityMultiplier = interp.intensity === 'high' ? 1.5 : 1.0;
@@ -209,7 +211,7 @@ export function mapInterpretation(interp: GeminiInterpretation): MappedPreferenc
     interpretation: interp,
     filterMode,
     intensityMultiplier,
-    toastMessage: `Got it — ${toastVerb}`,
+    toastMessage,
   };
 }
 

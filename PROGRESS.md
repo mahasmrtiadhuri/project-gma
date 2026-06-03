@@ -2761,3 +2761,122 @@ Collapsible button — `More options (N)` / `Hide options` with a rotating chevr
 
 - `tsc -b` clean
 - `vite build` clean (~1.43 MB main chunk, ~19 s)
+
+### 2026-06-03 — Human-readable "feels like" comfort, app-wide
+
+The cards used to read like a benchmark scoreboard (`67% COOLER`). Now they speak in the units people actually care about — `~8°F cooler`, `~6 mph less headwind`, `Wind sheltered`, `Glass glare zone 🔆`. The CLAUDE.md spec's "up to +15°F felt temperature from glass glare" anchors the temp scale. `tsc -b` + `vite build` clean.
+
+**Sun / shade — feels-like temperature** ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx))
+
+```
+cooler °F = (1 − meanSunExposure) × 15      // absolute, per card
+hotter °F = (meanSunExposure − 1) × 15      // glare case, exposure > 1.0
+delta °F  = (fastest − comfort) × 15        // GMA comparison
+```
+
+`comfortBadgeFor(route, filterMode, windSpeedMph)` returns the right-column badge:
+
+| Exposure / state | Badge | Color |
+|---|---|---|
+| `0–0.07` (or `< 1°F`) | "Full sun" | amber-orange |
+| `0.07–1.0` | "~X°F cooler" | green |
+| `> 1.0` (glare) | "~X°F hotter" | red-600 |
+| sunniest mode | "~X°F warmer" | amber-orange |
+
+**Wind — mph of headwind avoided**
+
+```
+exposure < 0.3                → "Wind sheltered"         (green)
+exposure ≥ 0.3, wind ≥ 3 mph  → "~X mph headwind"        (violet-500)
+wind < 3 mph                  → "Calm"                   (green)
+```
+
+**Rain — verbal shelter state**
+
+```
+exposure < 0.3 → "Rain sheltered 💧"     (cyan-500)
+exposure ≥ 0.3 → "Less rain exposure"    (slate-600)
+```
+
+**Condition labels — emoji'd** ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx))
+
+Below the feels-like badge a smaller condition chip names the route in plain English:
+
+| Internal key | Label |
+|---|---|
+| `mostly-shaded` | `Shaded walk 🌳` |
+| `partly-shaded` | `Mixed sun & shade ⛅` |
+| `mostly-sunny` | `Full sun ☀️` |
+| `glare-detected` (NEW) | `Glass glare zone 🔆` |
+| `sheltered` | `Wind sheltered` |
+| `moderate-wind` | `Moderate wind` |
+| `strong-headwind` | `Strong headwind 🌬` |
+| `rain-sheltered` | `Rain sheltered` |
+| `rain-exposed` | `Rain exposed 💧` |
+| `snow-sheltered` | `Snow sheltered` |
+| `snow-exposed` | `Snow exposed ❄` |
+
+`exposureToSunCondition` gains a `> 1.0` branch — glass-glare segments push `meanSunExposure` past 1 (segments report 1.5), and only those routes get the `Glass glare zone 🔆` chip + red badge.
+
+**GMA explanation line + ComparisonLine**
+
+`computeFeelsLikeDelta` replaces the old `computeExposureDelta` (which returned `%`). New shape:
+
+```ts
+interface FeelsLikeDelta {
+  phrase: string;       // "feel ~6°F cooler" / "avoid ~4 mph headwind" / "less rain exposure"
+  shortPhrase: string;  // "Feels ~6°F cooler" / "Avoids ~4 mph headwind" / "Less rain exposure"
+}
+```
+
+Wind mode requires `windSpeedMph ≥ 3` for a meaningful delta; rain mode requires `(fastest − comfort) ≥ 0.1`; sun mode requires `≥ 1°F` after rounding.
+
+Card explanation example: `+2 min · Feels ~6°F cooler` (was `+2 min · 40 % less sun exposure`).
+
+ComparisonLine example: `Save 2 minutes OR feel ~6°F cooler — your choice.` (was `Save 2 minutes OR save 40 % sun exposure — your choice.`)
+
+Both null-degrade when the gap is below threshold.
+
+**Start toast** ([src/App.tsx](src/App.tsx))
+
+`buildStartToast(route, filterMode, windSpeedMph)`:
+
+| Filter | Condition | Toast |
+|---|---|---|
+| `avoid-rain` | sheltered | `💧 Sheltered from rain` |
+| `avoid-rain` | exposed | `💧 Less rain on this route` |
+| `avoid-wind` | calm winds | `🌬 Calm winds out there` |
+| `avoid-wind` | sheltered | `🌬 Sheltered from wind` |
+| `avoid-wind` | partial | `🌬 ~X mph less headwind on this route` |
+| `sunniest` | — | `☀️ Catching maximum sun · ~X°F warmer` |
+| any sun filter | glare | `🔆 Heads-up: route passes glass glare` |
+| any sun filter | shaded | `🌳 Finding you the coolest route` |
+| any sun filter | partial | `🌳 Feels ~X°F cooler` |
+
+**Gemini conversational confirmations** ([src/lib/geminiRouting.ts](src/lib/geminiRouting.ts))
+
+`mapInterpretation` no longer composes `Got it — routing for X` from a verb token; each branch returns a complete sentence with an emoji:
+
+| Filter (intensity) | Toast |
+|---|---|
+| `sunniest` | `Got it — finding you the sunniest route ☀️` |
+| `avoid-both` (high) | `Got it — finding you the coolest, calmest route 🌳🌬` |
+| `avoid-both` | `Got it — finding cooler, calmer streets 🌳🌬` |
+| `avoid-sun` (high) | `Got it — finding you the coolest route 🌳` |
+| `avoid-sun` | `Got it — finding shadier streets 🌳` |
+| `avoid-wind` (high) | `Got it — finding you the most sheltered route 🌬` |
+| `avoid-wind` | `Got it — avoiding the worst headwinds 🌬` |
+| `no-preference` | `Got it — no specific preference` |
+
+**API surface changes**
+
+- `RouteSheetProps` gains `windSpeedMph: number` (feeds the wind feels-like badge + the wind comparison delta).
+- `RouteCardProps.percent` + `RouteCardProps.verb` removed; replaced with `comfortBadge: ComfortBadge | null`.
+- `MoreOptionsSection` takes `comfortBadgeFor` instead of `percentFor` + `verb`.
+- `RouteCondition` adds `'glare-detected'`.
+- App.tsx passes `weather?.windSpeedMph ?? 0` to both RouteSheet and the Start toast.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.43 MB main chunk, ~12 s)
