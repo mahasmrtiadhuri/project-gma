@@ -27,7 +27,11 @@ import { useOverpassData } from './hooks/useOverpassData';
 import { useSolarAPI } from './hooks/useSolarAPI';
 import { useLiveLocation } from './hooks/useLiveLocation';
 import { reverseGeocode } from './lib/geocoding';
-import { computeNextTurn, computeRouteProgress } from './lib/navigation';
+import {
+  computeNextTurn,
+  computeRouteProgress,
+  warmRouteNavigationCache,
+} from './lib/navigation';
 import type { Building } from './lib/overpass';
 import {
   fetchCandidateRoutes,
@@ -690,6 +694,18 @@ export default function App() {
   const selectedRoute = result?.routes[safeIdx] ?? null;
   const sheetOpen = destination !== null && origin !== null;
 
+  // Pre-warm the navigation cache for every candidate the moment the
+  // sheet has routes to show. The user is browsing options for at
+  // least a few hundred ms before tapping Start, so the cumulative
+  // distance tables + step boundaries are ready by the time
+  // `computeNextTurn` first fires for the live position fix.
+  useEffect(() => {
+    if (!result || result.routes.length === 0) return;
+    for (const r of result.routes) {
+      warmRouteNavigationCache(r.polyline, r.steps);
+    }
+  }, [result]);
+
   // Diagnostic: surface the actual polyline shape when the user picks a
   // route. A real Routes API walking polyline is 50–200 points; 2 points
   // means we fell back to the straight-line fixture in hlciRouter.
@@ -785,17 +801,12 @@ export default function App() {
 
   const handleStartNavigation = () => {
     if (!origin || !selectedRoute) return;
-    // Honor the user's current map view (2D / 3D / Satellite). We used to
-    // auto-switch to 3D Tiles here for the angled chase view, but it
-    // overrode an explicit user choice and made the segment coloring
-    // harder to read at the resulting tight zoom. The map-view switcher
-    // stays visible during navigation so the user can still toggle.
-    const target = originCenteredFitView(origin.point, selectedRoute.polyline);
-    setViewState({
-      ...target,
-      transitionDuration: 800,
-      transitionInterpolator: new FlyToInterpolator(),
-    } as MapViewState);
+    // Flip to navigation mode FIRST so the UI transitions immediately —
+    // the route polyline + coloredSegments are already memoized at this
+    // point, so they paint on the very next React frame regardless of
+    // whether geolocation, weather, or any other async data has come
+    // back yet. Then dispatch the camera fly-in (400 ms — fast enough
+    // that the user doesn't perceive a delay between tap and "moving").
     setNavigating(true);
     setToastMessage(
       buildStartToast(
@@ -804,6 +815,12 @@ export default function App() {
         weather?.windSpeedMph ?? 0,
       ),
     );
+    const target = originCenteredFitView(origin.point, selectedRoute.polyline);
+    setViewState({
+      ...target,
+      transitionDuration: 400,
+      transitionInterpolator: new FlyToInterpolator(),
+    } as MapViewState);
   };
 
   const handleStopNavigation = () => {
@@ -878,8 +895,9 @@ export default function App() {
 
   // ---- follow-cam --------------------------------------------------
   // While navigating, every new live geolocation fix re-centers the map
-  // on the user. 500 ms FlyToInterpolator gives a smooth chase. Pitch
-  // 0 so the chase view works regardless of which basemap the user is
+  // on the user. 200 ms transition gives a smooth, walking-pace chase
+  // that keeps up with brisk movement without feeling laggy. Pitch 0
+  // so the chase view works regardless of which basemap the user is
   // on (2D / 3D / Satellite) — a 55° tilt looks wrong on the flat
   // CartoDB raster, and a tilt-on-3D-only branch would surprise the
   // user the first time they switched mid-route. Zoom 17 (was 18) so a
@@ -894,7 +912,7 @@ export default function App() {
       zoom: 17,
       pitch: 0,
       bearing: liveLocation.heading ?? 0,
-      transitionDuration: 500,
+      transitionDuration: 200,
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
     // deps purposely exclude viewState — we drive the camera from live

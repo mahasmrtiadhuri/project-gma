@@ -128,7 +128,10 @@ export function GMACanvas({
     }
 
     // ---- forest / wood polygon fills --------------------------------
-    if (forests.length > 0) {
+    // Suppressed in navigation mode: only base map + route polyline +
+    // live-location dot remain, dramatically reducing GPU load so the
+    // follow-cam stays at 60 FPS on mobile.
+    if (!navigating && forests.length > 0) {
       out.push(
         new PolygonLayer<GreenArea>({
           id: 'forests',
@@ -147,7 +150,7 @@ export function GMACanvas({
     }
 
     // ---- building shadow projection ---------------------------------
-    if (buildingShadows.length > 0) {
+    if (!navigating && buildingShadows.length > 0) {
       out.push(
         new PolygonLayer<BuildingShadow>({
           id: 'building-shadows',
@@ -171,7 +174,7 @@ export function GMACanvas({
     // previous dark base; needed more presence here. Each segment's
     // .color is derived from its continuous .exposure value, the SAME
     // value the route scorer samples to compute the comfort %.
-    if (streetExposures && streetExposures.length > 0) {
+    if (!navigating && streetExposures && streetExposures.length > 0) {
       out.push(
         new PathLayer<StreetSegmentExposure>({
           id: 'street-sun-overlay',
@@ -193,7 +196,7 @@ export function GMACanvas({
     }
 
     // ---- tree dots --------------------------------------------------
-    if (trees.length > 0) {
+    if (!navigating && trees.length > 0) {
       out.push(
         new ScatterplotLayer<TreeNode>({
           id: 'trees',
@@ -215,7 +218,7 @@ export function GMACanvas({
     // Orange-red 15 m dots at the projected ground impact of reflected
     // sun rays from glass-clad buildings. Painted under the route
     // polyline so the route's deep-red glare segments stay visible.
-    if (glareHotspots && glareHotspots.length > 0) {
+    if (!navigating && glareHotspots && glareHotspots.length > 0) {
       out.push(
         new ScatterplotLayer<GlareHotspot>({
           id: 'glare-hotspots',

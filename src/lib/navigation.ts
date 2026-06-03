@@ -12,8 +12,64 @@
 // "Next turn" walks the cumulative step-boundary distances along the
 // polyline and reports the upcoming step's instruction + the distance
 // from the user to that boundary.
+//
+// Both functions are O(polyline.length + steps.length) — fast enough
+// to run on every geolocation fix. Cumulative polyline distances and
+// step boundaries are independently cached via WeakMap by array
+// reference: when the user sees route candidates, the per-route
+// distance tables warm during selection so the first `computeNextTurn`
+// after Start fires in microseconds.
 
 import type { RoutePoint, RouteStep } from './hlciRouter';
+
+// WeakMap caches keyed by the polyline / steps array reference. Routes
+// API responses produce stable arrays per candidate, so the WeakMap key
+// stays valid for the lifetime of the candidate.
+const cumulativeCache = new WeakMap<readonly RoutePoint[], number[]>();
+const boundariesCache = new WeakMap<readonly RouteStep[], number[]>();
+
+/**
+ * Pre-compute the per-route navigation tables (cumulative polyline
+ * distances + step boundaries) and stash them in the module-level
+ * WeakMap caches. Subsequent `computeRouteProgress` / `computeNextTurn`
+ * calls reuse the cached numbers instead of recomputing.
+ *
+ * App.tsx calls this once per selected route while the user is still
+ * picking — so by the time Start is tapped the navigation pipeline is
+ * fully warm.
+ */
+export function warmRouteNavigationCache(
+  polyline: readonly RoutePoint[],
+  steps: readonly RouteStep[],
+): void {
+  if (polyline.length >= 2) {
+    getCumulativeDistances(polyline);
+  }
+  if (steps.length > 0) {
+    getStepBoundaries(steps);
+  }
+}
+
+function getCumulativeDistances(polyline: readonly RoutePoint[]): number[] {
+  const cached = cumulativeCache.get(polyline);
+  if (cached) return cached;
+  const fresh = cumulativePolylineDistances(polyline);
+  cumulativeCache.set(polyline, fresh);
+  return fresh;
+}
+
+function getStepBoundaries(steps: readonly RouteStep[]): number[] {
+  const cached = boundariesCache.get(steps);
+  if (cached) return cached;
+  const fresh: number[] = [];
+  let acc = 0;
+  for (const s of steps) {
+    acc += s.distanceMeters;
+    fresh.push(acc);
+  }
+  boundariesCache.set(steps, fresh);
+  return fresh;
+}
 
 export interface RouteProgress {
   /** Meters traveled from the route's start, up to the nearest polyline vertex. */
@@ -44,7 +100,7 @@ export function computeRouteProgress(
   livePos: { lat: number; lng: number } | null,
 ): RouteProgress | null {
   if (polyline.length < 2) return null;
-  const cum = cumulativePolylineDistances(polyline);
+  const cum = getCumulativeDistances(polyline);
   const totalM = cum[cum.length - 1]!;
 
   if (!livePos) {
@@ -94,15 +150,11 @@ export function computeNextTurn(
   const progress = computeRouteProgress(polyline, livePos);
   if (!progress) return null;
 
-  // Cumulative distance at the END of each step (step boundaries from the
-  // route start). `boundaries[i]` is where step `i` ends, i.e. where step
-  // `i+1` begins.
-  const boundaries: number[] = [];
-  let acc = 0;
-  for (const s of steps) {
-    acc += s.distanceMeters;
-    boundaries.push(acc);
-  }
+  // Cumulative distance at the END of each step (step boundaries from
+  // the route start). `boundaries[i]` is where step `i` ends, i.e.
+  // where step `i+1` begins. Cached by step array reference; first
+  // call warms the cache for the route's lifetime.
+  const boundaries = getStepBoundaries(steps);
 
   // Current step = smallest i such that traveledM < boundaries[i].
   let currentStep = steps.length - 1;

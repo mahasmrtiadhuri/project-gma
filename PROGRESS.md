@@ -2880,3 +2880,42 @@ Both null-degrade when the gap is below threshold.
 
 - `tsc -b` clean
 - `vite build` clean (~1.43 MB main chunk, ~12 s)
+
+---
+
+## 2026-06-03 — Navigation startup perf + smoothness pass
+
+Six-item perf pass aimed at the moment between tap-Start and the first follow-cam frame, plus the per-frame cost while moving. Goal: navigation feels instant on tap and stays at 60 FPS on mobile.
+
+| # | Item | Change |
+|---|---|---|
+| 1 | Instant nav start | `handleStartNavigation` flips `setNavigating(true)` BEFORE dispatching the camera fly-in. Route polyline + `coloredSegments` are already `useMemo`-cached, so the navigation chrome paints on the very next React frame regardless of geolocation/weather/etc. |
+| 2 | Fly-in delay | FlyToInterpolator `transitionDuration` 800 ms → 400 ms in `handleStartNavigation` ([src/App.tsx](src/App.tsx)). |
+| 3 | Pre-computed nav data | New WeakMap caches in [src/lib/navigation.ts](src/lib/navigation.ts) keyed by polyline / steps array reference; exported `warmRouteNavigationCache(polyline, steps)` helper; private `getCumulativeDistances` / `getStepBoundaries` cached getters. `computeRouteProgress` and `computeNextTurn` both swapped to the cached getters. App.tsx warms the cache for every candidate the moment `result.routes` changes (effect on `[result]`), so first `computeNextTurn` after Start fires in O(1). |
+| 4 | Smooth follow-cam | Follow-cam viewState updates: `transitionDuration` 500 ms → 200 ms ([src/App.tsx](src/App.tsx)) — the camera keeps up with walking pace without jumping or feeling laggy. |
+| 5 | Layer-count diet | [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) now gates `forests`, `building-shadows`, `street-sun-overlay`, `trees`, and `glare-hotspots` on `!navigating`. During nav only the basemap + route polyline + live-location halo/dot paint, dramatically reducing GPU load. |
+| 6 | Route sun coloring preserved | Untouched: `route-comfort-overlay` PathLayer still uses per-segment `coloredSegments` colors (amber sunny / blue shaded / emerald canopy) during nav. The accessor was already per-segment, so the user keeps the upcoming-section sun-feel signal. |
+
+**Files touched**
+
+- [src/App.tsx](src/App.tsx) — import `warmRouteNavigationCache`; instant-flip + 400 ms fly-in in `handleStartNavigation`; 200 ms follow-cam transition; new `useEffect([result])` warming the per-candidate nav cache.
+- [src/lib/navigation.ts](src/lib/navigation.ts) — WeakMap caches + `warmRouteNavigationCache` export + cached getters + module docstring updated to describe the warm-on-selection pipeline.
+- [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) — `!navigating &&` gates on the five non-essential layer pushes. Memo deps already include `navigating`.
+
+**Why WeakMap**
+
+Routes API responses produce stable `polyline` and `steps` arrays per candidate (they live for the lifetime of the candidate). WeakMap keys auto-release when the candidate is GC'd, so the cache never leaks across route searches.
+
+**What still paints during navigation**
+
+- Basemap (`carto-positron-basemap` or 3D Tile3DLayer when satellite/3D modes are picked)
+- `route-comfort-overlay` PathLayer (per-segment colors preserved)
+- `live-location-halo` ScatterplotLayer
+- `live-location-dot` ScatterplotLayer
+
+Everything else suppressed until the user exits navigation mode.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.43 MB main chunk, ~17 s)
