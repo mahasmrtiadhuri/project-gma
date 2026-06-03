@@ -2681,3 +2681,83 @@ New `SkeletonRouteCard` component: 64 px-tall placeholder matching the real Rout
 
 - `tsc -b` clean
 - `vite build` clean (~1.43 MB main chunk, ~12 s)
+
+### 2026-06-03 — RouteSheet redesign: Fastest vs GMA-pick comparison cards
+
+Replaced the ranked-list of three identical route cards with a Google-Maps-style "Fastest vs comfort" comparison — the demo now reads as "this is what Google Maps gives you, this is what GMA recommends, and here's exactly the trade-off." `tsc -b` + `vite build` clean.
+
+**Two-card layout** ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx))
+
+The route-list region now branches on whether the fastest route is also the GMA pick:
+
+- **Distinct case** (the interesting one):
+  1. Fastest card — clean white background, grey **FASTEST** badge, time / km / via-street, comfort percent + condition chip on the right.
+  2. Comparison line — `Save 2 minutes OR save 40 % sun exposure — your choice.`
+  3. GMA pick card — left amber stripe + soft amber fill (cyan or violet for rain / wind filters), amber **GMA PICK** badge with a sun / wind / rain icon, same time + via line plus a one-line explanation underneath: `+2 min · 40 % less sun exposure`.
+  4. Collapsible `More options (N)` — taps to expand the remaining candidates.
+- **Combined case** (fastest = GMA pick):
+  1. Single card carrying BOTH badges.
+  2. Reassuring green line: `Great news — the fastest route is also the most comfortable right now.`
+  3. Same collapsible More options below.
+
+Cards stay clickable to select; the existing `selectedRouteIdx` plumbing carries through, so Start still uses whichever card the user picks.
+
+**`RouteCard` variants**
+
+```ts
+type CardVariant = 'fastest' | 'gma' | 'combined' | 'other';
+```
+
+Visual axes that change with variant:
+- Background — white for `fastest`, faint amber (`rgba(245, 158, 11, 0.04)`) for `gma` / `combined`, near-white grey for `other`.
+- Left accent stripe (4 px inset shadow) — amber for `gma` / `combined`, transparent otherwise.
+- Badges row — `Fastest` chip for fastest+combined, `GMA Pick` chip with filter icon for gma+combined.
+- Explanation line — rendered under the via-street row only when present (only the gma variant supplies it).
+
+`GMA Pick` chip background is filter-aware:
+
+| Filter | Chip background |
+|---|---|
+| `avoid-sun` / `avoid-both` / `sunniest` / `no-preference` | amber-500 `#F59E0B` |
+| `avoid-wind` | violet-500 `#A855F7` |
+| `avoid-rain` | cyan-500 `#06B6D4` |
+
+Icon is `PickSunIcon` / `WindLeafIcon` / `PickRainIcon` — all 10 × 10 px inline SVGs.
+
+**Delta math** (`computeExposureDelta`)
+
+```
+f = fastest.mean<Sun|Wind|Precip>Exposure
+c = comfort.mean<Sun|Wind|Precip>Exposure
+
+if (f < 0.01)        return null  // can't normalize
+rawDiff = direction === 'less' ? f − c : c − f
+pct = round(rawDiff / f × 100)
+if (pct < 5)         return null  // not a meaningful gap to advertise
+```
+
+Per filter:
+
+| Filter | Exposure field | Direction | Label |
+|---|---|---|---|
+| `avoid-sun` | `meanSunExposure` | less | `sun` |
+| `avoid-wind` | `meanWindExposure` | less | `wind` |
+| `avoid-rain` | `meanPrecipExposure` | less | `rain` |
+| `avoid-both` | average of sun + wind | less | `sun + wind` |
+| `sunniest` | `meanSunExposure` | more | `sun` |
+| `no-preference` | — (returns null) | — | — |
+
+`buildGmaExplanation(timeDeltaMin, expDelta)` formats `+X min · Y% {less|more} {label} exposure`. ComparisonLine formats `Save {X minutes|no extra time} OR save Y% {label} exposure — your choice.` Both gracefully degrade to null when there's no meaningful delta (e.g., no-preference filter, or the fastest is within 5 % exposure of the comfort pick).
+
+**`MoreOptionsSection`**
+
+Collapsible button — `More options (N)` / `Hide options` with a rotating chevron. When expanded, renders the remaining routes as `variant='other'` (white background, no accent stripe, no badges) so the visual hierarchy stays clear.
+
+**State** — single `showMoreOptions: boolean` in RouteSheet. Doesn't reset on filter change since the user probably wants the same expand/collapse preference; resets implicitly when the sheet unmounts (origin / destination cleared).
+
+**Touch targets** preserved from the previous mobile pass — all cards 64 px min height, More-options button 44 px, badges sized appropriately for thumbs.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.43 MB main chunk, ~19 s)
