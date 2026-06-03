@@ -1,0 +1,98 @@
+@import 'tailwindcss';
+
+/* ----------------------------------------------------------------------
+ * Light palette — Google-Maps-style consumer-app aesthetic with the
+ * sun visualization as the differentiator. Replaces the dark sci-fi
+ * theme entirely. CSS variable shape preserved so components reading
+ * var(--gma-*) tokens flip with the palette without per-file edits.
+ * ---------------------------------------------------------------------- */
+:root {
+  --gma-bg: #f1f3f4;                /* page background */
+  --gma-surface: #ffffff;           /* card body */
+  --gma-surface-strong: #ffffff;
+  --gma-surface-translucent: rgba(255, 255, 255, 0.92);
+  --gma-border: #dadce0;            /* hairline divider */
+  --gma-border-strong: #bdc1c6;
+
+  --gma-text-primary: #1a1a2e;
+  --gma-text-secondary: #5f6368;
+  --gma-text-muted: #9aa0a6;
+
+  /* Accent palette — sun amber, wind blue, tree green, shadow deep blue.
+   * The "live" sun accent is overridden per-frame from interpolatedDayColor
+   * in App.tsx via inline style; these are the safe static fallbacks. */
+  --gma-accent-sun: rgb(255, 160, 0);
+  --gma-accent-wind: rgb(66, 133, 244);
+  --gma-accent-tree: rgb(30, 100, 50);
+  --gma-accent-shadow: rgb(40, 60, 100);
+  --gma-accent-neutral: rgb(150, 158, 180);
+
+  /* Map overlay colors per spec — used directly by deck.gl layers. */
+  --gma-street-sun-css: rgba(255, 180, 0, 0.35);
+  --gma-street-shade-css: rgba(100, 140, 200, 0.20);
+
+  /* Google-Maps-style elevations. */
+  --gma-shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.10);
+  --gma-shadow-md: 0 2px 6px rgba(60, 64, 67, 0.15),
+                   0 1px 2px rgba(60, 64, 67, 0.10);
+  --gma-shadow-lg: 0 4px 12px rgba(60, 64, 67, 0.20),
+                   0 1px 3px rgba(60, 64, 67, 0.10);
+
+  /* Font assignments per spec: system font for navigation text, DM Mono
+   * for data labels (times, coordinates, percentages). Components opt in
+   * to mono via the `font-data` class or font-family: var(--font-data). */
+  --font-ui:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  --font-data:
+    'DM Mono',
+    'JetBrains Mono',
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  background: var(--gma-bg);
+  color: var(--gma-text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+body {
+  overflow: hidden;
+}
+
+.font-data {
+  font-family: var(--font-data);
+}
+
+/* Glassmorphism utilities — flipped to light. The previous dark .gma-glass
+ * /.gma-glass-strong are gone; same classnames now produce white
+ * semi-transparent surfaces with a subtle blur for the "in front of the
+ * map" depth cue without obscuring it. */
+.gma-glass {
+  background: var(--gma-surface-translucent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--gma-border);
+}
+
+.gma-glass-strong {
+  background: #ffffff;
+  border: 1px solid var(--gma-border);
+}

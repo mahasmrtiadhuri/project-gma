@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(echo \"TSC_EXIT=$?\")",
+      "Bash(echo \"VITE_EXIT=$?\")",
+      "Bash(grep -c \"vite build\\\\` clean \\(~1.42 MB main chunk, ~12 s\\)\" PROGRESS.md)"
+    ]
+  }
+}

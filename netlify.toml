@@ -1,0 +1,17 @@
+# Netlify build + redirects.
+#
+# Frontend hits `/api/solar?lat=…&lng=…` in both dev (Vite proxy → Express)
+# and prod (Netlify redirect → serverless function). Set the
+# GOOGLE_MAPS_API_KEY env var in the Netlify dashboard, NOT in this file —
+# committed envvars would leak the key into git.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/solar"
+  to = "/.netlify/functions/solar"
+  status = 200
+  force = true

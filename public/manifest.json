@@ -1,0 +1,17 @@
+{
+  "name": "Generative Micro-Climate Architect",
+  "short_name": "GMA",
+  "description": "Hyper-local comfort routing through NYC using solar ray-tracing and Venturi wind approximation.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f1f3f4",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
