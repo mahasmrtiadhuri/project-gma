@@ -256,7 +256,7 @@ export function RouteSheet({
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-0 left-1/2 z-30 w-[min(440px,100vw)] -translate-x-1/2 rounded-t-2xl bg-white pb-[max(env(safe-area-inset-bottom,0px),16px)]"
+      className="pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[60dvh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl bg-white pb-[max(env(safe-area-inset-bottom,0px),16px)] sm:max-h-[75dvh]"
       style={{
         boxShadow: 'var(--gma-shadow-lg)',
         border: '1px solid var(--gma-border)',
@@ -269,17 +269,17 @@ export function RouteSheet({
         type="button"
         onClick={onDismiss}
         aria-label="Close routes"
-        className="absolute right-3 top-3 rounded-full p-1.5 text-[var(--gma-text-secondary)] hover:bg-black/5 hover:text-[var(--gma-text-primary)]"
+        className="absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full text-[var(--gma-text-secondary)] hover:bg-black/5 hover:text-[var(--gma-text-primary)]"
       >
         <CloseIcon />
       </button>
 
       <div
-        className="mx-auto my-2 h-1 w-10 rounded-full"
+        className="mx-auto my-2 h-1 w-10 shrink-0 rounded-full"
         style={{ background: 'var(--gma-border-strong)' }}
       />
 
-      <div className="flex gap-1.5 overflow-x-auto px-4 pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none]">
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-4 pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none]">
         {visibleFilters.map((mode) => {
           const meta = FILTER_META[mode];
           const active = mode === filterMode;
@@ -302,7 +302,7 @@ export function RouteSheet({
               key={mode}
               type="button"
               onClick={() => onFilterChange(mode)}
-              className="whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs transition-colors"
+              className="inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-sm transition-colors"
               style={
                 active
                   ? {
@@ -325,17 +325,17 @@ export function RouteSheet({
 
       <form
         onSubmit={handlePreferenceSubmit}
-        className="mx-3 mb-3 flex items-center gap-2"
+        className="mx-3 mb-3 flex shrink-0 items-center gap-2"
         aria-label="Describe your routing preference"
       >
         <input
           type="text"
           value={preferenceInput}
           onChange={(event) => setPreferenceInput(event.target.value)}
-          placeholder="Describe your preference… e.g. I'm walking in a suit"
+          placeholder="e.g. I'm walking in a suit"
           disabled={geminiBusy}
           maxLength={140}
-          className="flex-1 rounded-full px-3.5 py-2 text-xs outline-none placeholder:text-[var(--gma-text-muted)] disabled:opacity-60"
+          className="h-11 flex-1 rounded-full px-4 text-sm outline-none placeholder:text-[var(--gma-text-muted)] disabled:opacity-60"
           style={{
             background: 'rgba(0, 0, 0, 0.04)',
             border: '1px solid var(--gma-border)',
@@ -346,7 +346,7 @@ export function RouteSheet({
         <button
           type="submit"
           disabled={geminiBusy || preferenceInput.trim().length === 0}
-          className="flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:opacity-40"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40"
           style={{
             background: dayAccent,
             color: '#ffffff',
@@ -357,26 +357,27 @@ export function RouteSheet({
         </button>
       </form>
 
-      {allMostlySunny && (
-        <div
-          className="mx-3 mb-2 flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
-          style={{
-            background: 'rgba(251, 188, 4, 0.12)',
-            border: '1px solid rgba(234, 88, 12, 0.30)',
-            color: 'rgb(140, 60, 0)',
-          }}
-          role="status"
-        >
-          <SunWarningIcon />
-          <span>
-            All routes are sunny at this time. Try leaving earlier or later
-            for more shade.
-          </span>
-        </div>
-      )}
+      <div className="flex-1 overflow-y-auto">
+        {allMostlySunny && (
+          <div
+            className="mx-3 mb-2 flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+            style={{
+              background: 'rgba(251, 188, 4, 0.12)',
+              border: '1px solid rgba(234, 88, 12, 0.30)',
+              color: 'rgb(140, 60, 0)',
+            }}
+            role="status"
+          >
+            <SunWarningIcon />
+            <span>
+              All routes are sunny at this time. Try leaving earlier or later
+              for more shade.
+            </span>
+          </div>
+        )}
 
-      <div className="space-y-2 px-3 pb-3">
-        {isLoading ? (
+        <div className="space-y-2 px-3 pb-3">
+          {isLoading ? (
           <div className="flex items-center gap-3 px-3 py-5 text-sm text-[var(--gma-text-secondary)]">
             <Spinner color={dayAccent} />
             Finding routes…
@@ -416,14 +417,15 @@ export function RouteSheet({
             />
           ))
         )}
+        </div>
       </div>
 
       {canStart && (
-        <div className="px-3 pb-1">
+        <div className="shrink-0 px-3 pb-1 pt-2">
           <button
             type="button"
             onClick={onStartNavigation}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium uppercase tracking-wider transition-transform active:scale-[0.98]"
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-xl text-base font-medium uppercase tracking-wider transition-transform active:scale-[0.98]"
             style={{
               background: dayAccent,
               color: '#ffffff',
@@ -474,7 +476,7 @@ function RouteCard({
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className="flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors"
+      className="flex min-h-[64px] w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors"
       style={
         selected
           ? {

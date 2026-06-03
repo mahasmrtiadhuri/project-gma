@@ -976,6 +976,7 @@ export default function App() {
           windSpeedMph={weather?.windSpeedMph ?? null}
           precipitationType={weather?.precipitationType ?? null}
           precipitationProbability={weather?.precipitationProbability ?? null}
+          routeSheetOpen={sheetOpen}
         />
       )}
 
@@ -983,9 +984,15 @@ export default function App() {
        * MapViewSwitcher stays visible during navigation — the user owns
        * the map view choice (2D / 3D / Satellite) and may want to flip
        * it mid-route. Auto-3D on Start was removed; the switcher is the
-       * single way to change views now.
+       * single way to change views now. On mobile (<sm) the switcher
+       * hides itself when the bottom sheet is open since the sheet
+       * goes full-width and would overlap.
        */}
-      <MapViewSwitcher value={mapView} onChange={setMapView} />
+      <MapViewSwitcher
+        value={mapView}
+        onChange={setMapView}
+        routeSheetOpen={sheetOpen && !navigating}
+      />
 
       <RouteLegend
         visible={

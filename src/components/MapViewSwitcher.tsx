@@ -3,6 +3,11 @@ export type MapView = '2d' | '3d' | 'satellite';
 export interface MapViewSwitcherProps {
   value: MapView;
   onChange: (next: MapView) => void;
+  /**
+   * True when the bottom RouteSheet is open. On mobile (<sm) the sheet
+   * is full-width and would overlap the switcher — hide in that case.
+   */
+  routeSheetOpen?: boolean;
 }
 
 const OPTIONS: ReadonlyArray<{ key: MapView; label: string }> = [
@@ -15,10 +20,17 @@ const OPTIONS: ReadonlyArray<{ key: MapView; label: string }> = [
  * Light map-view switcher (bottom-right). 2D → CartoDB Positron tiles;
  * 3D → Google Photorealistic 3D Tiles; satellite → ESRI World Imagery.
  */
-export function MapViewSwitcher({ value, onChange }: MapViewSwitcherProps) {
+export function MapViewSwitcher({
+  value,
+  onChange,
+  routeSheetOpen = false,
+}: MapViewSwitcherProps) {
   return (
     <div
-      className="pointer-events-auto absolute bottom-[calc(env(safe-area-inset-bottom,0px)+2rem)] right-4 z-40 flex flex-col gap-1 rounded-xl bg-white p-1"
+      className={
+        'pointer-events-auto absolute bottom-[calc(env(safe-area-inset-bottom,0px)+2rem)] right-4 z-40 flex flex-col gap-1 rounded-xl bg-white p-1' +
+        (routeSheetOpen ? ' max-sm:hidden' : '')
+      }
       style={{
         boxShadow: 'var(--gma-shadow-md)',
         border: '1px solid var(--gma-border)',
@@ -35,7 +47,7 @@ export function MapViewSwitcher({ value, onChange }: MapViewSwitcherProps) {
             role="radio"
             aria-checked={active}
             onClick={() => onChange(opt.key)}
-            className="rounded-lg px-3 py-1.5 text-xs uppercase tracking-wider transition-colors"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg px-3 text-xs uppercase tracking-wider transition-colors"
             style={
               active
                 ? {

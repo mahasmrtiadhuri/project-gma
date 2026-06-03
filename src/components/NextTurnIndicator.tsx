@@ -21,17 +21,16 @@ export function NextTurnIndicator({ nextTurn }: NextTurnIndicatorProps) {
 
   return (
     <div
-      className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+2.5rem)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-full bg-white px-5 py-3"
+      className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] left-1/2 z-30 flex h-14 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 items-center rounded-full bg-white px-5"
       style={{
         boxShadow:
           '0 14px 36px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.06)',
         border: '1px solid var(--gma-border)',
-        maxWidth: 'calc(100vw - 2rem)',
       }}
       role="status"
       aria-live="polite"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex w-full items-center gap-3">
         <span
           className="text-xl leading-none"
           style={{
@@ -43,7 +42,7 @@ export function NextTurnIndicator({ nextTurn }: NextTurnIndicatorProps) {
         >
           {arrow}
         </span>
-        <span className="truncate text-base text-[var(--gma-text-primary)]">
+        <span className="flex-1 truncate text-base text-[var(--gma-text-primary)]">
           {instructionText}
         </span>
         <span

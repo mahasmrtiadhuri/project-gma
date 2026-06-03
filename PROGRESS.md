@@ -2561,3 +2561,58 @@ dist/
 
 - `tsc -b` clean
 - `vite build` clean (~1.42 MB main chunk, ~10 s)
+
+### 2026-06-02 — Mobile layout pass (375 px iPhone SE target)
+
+Live deploy at https://neon-empanada-9d30e9.netlify.app was broken on phone screens. Every floating control resized + repositioned for mobile-first; all touch targets bumped to ≥ 44 × 44 px per Apple HIG / Material guidance. `tsc -b` + `vite build` clean.
+
+**Width pattern adopted everywhere**
+
+`w-[min(<desktop-max>, calc(100vw - 2rem))]` — fills the viewport minus 16 px on each side on mobile, caps at the desktop max. Replaces the previous `w-[min(440px, 92vw)]` pattern that left awkward gutters at narrow widths.
+
+**Per-component changes**
+
+| Component | Mobile width | Touch height | Notes |
+|---|---|---|---|
+| [SearchBar](src/components/SearchBar.tsx) | `min(460px, 100vw − 32)` | inputs `h-12` (py-3) | `top-[calc(env(safe-area-inset-top)+1rem)]` |
+| [TransportModeSwitcher](src/components/TransportModeSwitcher.tsx) | `max-w-[100vw − 32]`, `overflow-x-auto` | pills `h-11 w-14` (44 × 56) | repositioned to `top-[insetTop+9.5rem]` to clear taller SearchBar |
+| [TimePicker](src/components/TimePicker.tsx) | `min(300px, 100vw − 32)` | trigger `h-11`, mode options `min-h-[44px]` | `top-[insetTop+13.5rem]` |
+| [RouteLegend](src/components/RouteLegend.tsx) | unchanged content | n/a | `top-[insetTop+17rem]` (was 13.5rem) to clear the new stack |
+| [RouteSheet](src/components/RouteSheet.tsx) | `min(440px, 100vw)` | filter pills `min-h-[44px]`, RouteCard `min-h-[64px]`, Start button `h-14`, close button `h-11 w-11` | `flex flex-col max-h-[60dvh] sm:max-h-[75dvh]`; warning + cards wrapped in `flex-1 overflow-y-auto` so Start button stays pinned to the bottom |
+| [SunCompass](src/components/SunCompass.tsx) | unchanged | n/a | disc `h-[70px] w-[70px] sm:h-[88px] sm:w-[88px]`; hides on mobile via `max-sm:hidden` when `routeSheetOpen` |
+| [MapViewSwitcher](src/components/MapViewSwitcher.tsx) | unchanged | buttons `min-h-[44px] min-w-[44px]` | same `max-sm:hidden` when sheet open |
+| [NavigationHeader](src/components/NavigationHeader.tsx) | mobile `left-4 right-[5.5rem]` (full-width minus stop-button column); desktop `min(460px, 100vw − 7rem)` centered | bar + Stop button both `h-12` | Stop button gains `min-w-[64px]` |
+| [NextTurnIndicator](src/components/NextTurnIndicator.tsx) | `min(460px, 100vw − 32)` | pill `h-14` | bottom inset `+1rem` (was `+2.5rem`) so it sits closer to the home-indicator safe area |
+
+**Sheet open / mobile chrome interaction**
+
+`sheetOpen` (boolean derived from origin + destination present) now flows into SunCompass and MapViewSwitcher as `routeSheetOpen`. Both components apply `max-sm:hidden` when true — the bottom sheet is full-width on mobile and would overlap the corner controls; they're hidden until the user dismisses or starts navigation.
+
+On desktop (`sm:` and up, ≥ 640 px) the sheet is 440 px wide centered, leaving the bottom-left + bottom-right corners free, so both controls stay visible.
+
+**RouteSheet height management**
+
+Outer container: `flex flex-col max-h-[60dvh] sm:max-h-[75dvh]`. Inner sections by role:
+
+```
+┌─ shrink-0  drag handle + filter pills + conversational input
+├─ flex-1 overflow-y-auto: warning + route list
+│  (scrolls when content overflows the 60dvh cap)
+└─ shrink-0  Start button + safe-area inset
+```
+
+Start always reachable without scrolling past the cards.
+
+**Verification at 375 × 667 (iPhone SE)**
+
+1. SearchBar fills with 16 px gutters; inputs comfortable thumb size.
+2. Transport pills stack centered, scrollable if all 4 don't fit.
+3. TimePicker centered below the pills, full pill stretches to 300 px.
+4. RouteSheet covers bottom 60 % of viewport with internal scroll; filter pills scroll horizontally; route cards 64 px tall; Start button is 56 px and full width.
+5. SunCompass + MapViewSwitcher hidden while sheet is open; visible the moment the user closes destination.
+6. Navigation: header bar + Stop button side-by-side at top, next-turn pill 56 px tall at the bottom above the home-indicator inset.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.43 MB main chunk, ~16 s)

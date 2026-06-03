@@ -26,6 +26,13 @@ export interface SunCompassProps {
    */
   precipitationType: PrecipitationType | null;
   precipitationProbability: number | null;
+  /**
+   * True when the bottom RouteSheet is open. On mobile (<sm) the
+   * sheet takes the full width and would overlap the compass; we
+   * hide it in that case. On desktop the sheet is 440 px wide and
+   * leaves the bottom-left corner free, so the compass stays.
+   */
+  routeSheetOpen?: boolean;
 }
 
 /**
@@ -45,6 +52,7 @@ export function SunCompass({
   windSpeedMph,
   precipitationType,
   precipitationProbability,
+  routeSheetOpen = false,
 }: SunCompassProps) {
   const [r, g, b] = dayColor;
   const accent = `rgb(${r}, ${g}, ${b})`;
@@ -61,15 +69,20 @@ export function SunCompass({
 
   return (
     <div
-      className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+2.5rem)] left-4 z-30 flex flex-col items-stretch gap-2 rounded-2xl bg-white px-3 py-2.5"
+      className={
+        'pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+2.5rem)] left-4 z-30 flex flex-col items-stretch gap-2 rounded-2xl bg-white px-3 py-2.5' +
+        // Hide on mobile when the bottom route sheet is open — the sheet
+        // is full-width on mobile and would overlap the compass.
+        (routeSheetOpen ? ' max-sm:hidden' : '')
+      }
       style={{
         boxShadow: 'var(--gma-shadow-md)',
         border: '1px solid var(--gma-border)',
-        minWidth: '128px',
+        minWidth: '112px',
       }}
       aria-label="Sun position and data sources"
     >
-      <div className="mx-auto h-[88px] w-[88px]">
+      <div className="mx-auto h-[70px] w-[70px] sm:h-[88px] sm:w-[88px]">
         <svg viewBox="0 0 120 120" className="h-full w-full" aria-hidden="true">
           {/* Outer disc */}
           <circle

@@ -69,12 +69,12 @@ export function TimePicker({
   return (
     <div
       ref={wrapperRef}
-      className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+11rem)] z-20 -translate-x-1/2"
+      className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+13.5rem)] z-20 w-[min(300px,calc(100vw-2rem))] -translate-x-1/2"
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full bg-white px-4 py-1.5 text-xs text-[var(--gma-text-primary)] transition-colors hover:bg-black/[0.02]"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-4 text-sm text-[var(--gma-text-primary)] transition-colors hover:bg-black/[0.02]"
         style={{
           boxShadow: 'var(--gma-shadow-md)',
           border: '1px solid var(--gma-border)',
@@ -105,7 +105,7 @@ export function TimePicker({
                   key={opt.key}
                   type="button"
                   onClick={() => handleModeSelect(opt.key)}
-                  className="flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors"
+                  className="flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors"
                   style={
                     active
                       ? {

@@ -36,7 +36,7 @@ export function RouteLegend({
 
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+13.5rem)] z-20 -translate-x-1/2 rounded-full bg-white px-3 py-1.5"
+      className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+17rem)] z-20 -translate-x-1/2 rounded-full bg-white px-3 py-1.5"
       style={{
         boxShadow: 'var(--gma-shadow-sm)',
         border: '1px solid var(--gma-border)',

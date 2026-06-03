@@ -32,7 +32,7 @@ export function TransportModeSwitcher({
 
   return (
     <div
-      className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+7.5rem)] z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white p-1"
+      className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+9.5rem)] z-20 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-full bg-white p-1 [-ms-overflow-style:none] [scrollbar-width:none]"
       style={{
         boxShadow: 'var(--gma-shadow-md)',
         border: '1px solid var(--gma-border)',
@@ -50,7 +50,7 @@ export function TransportModeSwitcher({
             aria-checked={active}
             aria-label={label}
             onClick={() => onChange(key)}
-            className="flex h-9 w-12 items-center justify-center rounded-full transition-colors"
+            className="flex h-11 w-14 shrink-0 items-center justify-center rounded-full transition-colors"
             style={
               active
                 ? {
