@@ -26,12 +26,8 @@ export function NavigationHeader({
   return (
     <>
       <div
-        className="pointer-events-auto absolute left-4 right-[calc(4.5rem+1rem)] top-[calc(env(safe-area-inset-top,0px)+1rem)] z-40 mx-auto flex h-12 items-center justify-center rounded-2xl bg-white px-4 sm:left-1/2 sm:right-auto sm:h-auto sm:w-[min(460px,calc(100vw-7rem))] sm:-translate-x-1/2 sm:px-5 sm:py-3"
-        style={{
-          boxShadow:
-            '0 14px 36px rgba(0, 0, 0, 0.10), 0 4px 12px rgba(0, 0, 0, 0.05)',
-          border: '1px solid var(--gma-border)',
-        }}
+        className="gma-card pointer-events-auto absolute left-4 right-[calc(4.5rem+1rem)] top-[calc(env(safe-area-inset-top,0px)+1rem)] z-40 mx-auto flex h-12 items-center justify-center rounded-2xl px-4 sm:left-1/2 sm:right-auto sm:h-auto sm:w-[min(460px,calc(100vw-7rem))] sm:-translate-x-1/2 sm:px-5 sm:py-3"
+        style={{ boxShadow: 'var(--gma-shadow-lg)' }}
         role="status"
         aria-live="polite"
       >
@@ -63,11 +59,7 @@ export function NavigationHeader({
       <button
         type="button"
         onClick={onStop}
-        className="pointer-events-auto absolute right-4 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-40 flex h-12 min-w-[64px] items-center justify-center rounded-full bg-white px-4 text-sm font-medium text-[var(--gma-text-primary)] transition-colors hover:bg-black/[0.04]"
-        style={{
-          boxShadow: 'var(--gma-shadow-md)',
-          border: '1px solid var(--gma-border)',
-        }}
+        className="gma-card gma-press pointer-events-auto absolute right-4 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-40 flex h-12 min-w-[64px] items-center justify-center rounded-full px-4 text-sm font-medium text-[var(--gma-text-primary)] hover:bg-[var(--gma-hover-bg)]"
         aria-label="Stop navigation"
       >
         Stop

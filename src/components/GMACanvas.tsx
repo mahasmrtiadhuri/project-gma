@@ -29,6 +29,15 @@ const CARTO_POSITRON_TILES = [
   'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
 ];
 
+// Carto "Dark Matter" — the same tile set with a near-black basemap.
+// Picked automatically in dark mode so the 2D map matches the UI theme.
+const CARTO_DARK_MATTER_TILES = [
+  'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+  'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+  'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+  'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+];
+
 const ESRI_SATELLITE_TILES =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
@@ -90,6 +99,12 @@ export interface GMACanvasProps {
    * as the primary signal.
    */
   navigating: boolean;
+  /**
+   * Active theme — drives map-overlay opacity. Light mode keeps overlays
+   * subtle (so the white basemap stays readable); dark mode amplifies to
+   * vivid (so the route + glare hotspots glow against the dark map).
+   */
+  theme: 'light' | 'dark';
 }
 
 export function GMACanvas({
@@ -105,8 +120,21 @@ export function GMACanvas({
   glareHotspots,
   liveLocation,
   navigating,
+  theme,
 }: GMACanvasProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const isDark = theme === 'dark';
+
+  // Per-mode overlay alpha multiplier. Light: 1.0 (subtle, ≤ 0.2 absolute
+  // alpha across overlays). Dark: 2.0 (vivid, ~0.5 alpha cap) so the
+  // route reads against the dark basemap.
+  const alphaMul = isDark ? 2.0 : 1.0;
+  const tintAlpha = (rgba: Color): Color => [
+    rgba[0],
+    rgba[1],
+    rgba[2],
+    Math.min(255, Math.round((rgba[3] ?? 255) * alphaMul)),
+  ];
 
   const layers = useMemo<Layer[]>(() => {
     const out: Layer[] = [];
@@ -124,7 +152,7 @@ export function GMACanvas({
         );
       }
     } else {
-      out.push(buildBasemapTileLayer(mapView));
+      out.push(buildBasemapTileLayer(mapView, theme));
     }
 
     // ---- forest / wood polygon fills --------------------------------
@@ -137,8 +165,8 @@ export function GMACanvas({
           id: 'forests',
           data: forests,
           getPolygon: (d) => d.polygon,
-          getFillColor: FOREST_FILL,
-          getLineColor: FOREST_OUTLINE,
+          getFillColor: tintAlpha(FOREST_FILL),
+          getLineColor: tintAlpha(FOREST_OUTLINE),
           getLineWidth: 1,
           lineWidthUnits: 'pixels',
           stroked: true,
@@ -156,7 +184,7 @@ export function GMACanvas({
           id: 'building-shadows',
           data: buildingShadows,
           getPolygon: (d) => d.polygon,
-          getFillColor: SHADOW_FILL,
+          getFillColor: tintAlpha(SHADOW_FILL),
           stroked: false,
           filled: true,
           pickable: false,
@@ -224,11 +252,13 @@ export function GMACanvas({
           id: 'glare-hotspots',
           data: glareHotspots,
           getPosition: (h) => [h.lng, h.lat],
-          getFillColor: GLARE_HOTSPOT_FILL,
-          getRadius: 15,
+          getFillColor: tintAlpha(GLARE_HOTSPOT_FILL),
+          // Dark mode bumps the dot radius too so it reads as a glowing
+          // marker, not just a tinted point.
+          getRadius: isDark ? 22 : 15,
           radiusUnits: 'meters',
-          radiusMinPixels: 6,
-          radiusMaxPixels: 28,
+          radiusMinPixels: isDark ? 10 : 6,
+          radiusMaxPixels: isDark ? 38 : 28,
           stroked: false,
           pickable: false,
           parameters: { depthCompare: 'always', depthWriteEnabled: false },
@@ -353,28 +383,37 @@ export function GMACanvas({
     glareHotspots,
     liveLocation,
     navigating,
+    theme,
   ]);
 
-  const getTooltip = useCallback((info: PickingInfo) => {
-    if (!info.layer || info.layer.id !== 'route-comfort-overlay') return null;
-    const obj = info.object as ColoredSegment | undefined;
-    if (!obj?.label) return null;
-    return {
-      html: buildDiagnosticTooltipHtml(obj),
-      style: {
-        background: '#ffffff',
-        color: '#1a1a2e',
-        padding: '10px 12px',
-        borderRadius: '10px',
-        border: '1px solid rgba(0, 0, 0, 0.08)',
-        boxShadow: '0 8px 20px rgba(0, 0, 0, 0.15)',
-        fontFamily: 'var(--font-data)',
-        fontSize: '11px',
-        letterSpacing: '0.02em',
-        maxWidth: '320px',
-      },
-    };
-  }, []);
+  const getTooltip = useCallback(
+    (info: PickingInfo) => {
+      if (!info.layer || info.layer.id !== 'route-comfort-overlay') return null;
+      const obj = info.object as ColoredSegment | undefined;
+      if (!obj?.label) return null;
+      return {
+        html: buildDiagnosticTooltipHtml(obj),
+        style: {
+          background: isDark ? 'rgba(18, 18, 28, 0.95)' : '#ffffff',
+          color: isDark ? '#f1f5f9' : '#1a1a2e',
+          padding: '10px 12px',
+          borderRadius: '10px',
+          border: isDark
+            ? '1px solid rgba(255, 255, 255, 0.18)'
+            : '1px solid rgba(0, 0, 0, 0.08)',
+          boxShadow: isDark
+            ? '0 8px 24px rgba(0, 0, 0, 0.5)'
+            : '0 8px 20px rgba(0, 0, 0, 0.15)',
+          fontFamily: 'var(--font-data)',
+          fontSize: '11px',
+          letterSpacing: '0.02em',
+          maxWidth: '320px',
+          backdropFilter: isDark ? 'blur(12px)' : undefined,
+        },
+      };
+    },
+    [isDark],
+  );
 
   return (
     <div className="absolute inset-0">
@@ -392,10 +431,15 @@ export function GMACanvas({
   );
 }
 
-function buildBasemapTileLayer(mapView: Exclude<MapView, '3d'>): TileLayer {
-  const data = mapView === '2d' ? CARTO_POSITRON_TILES : ESRI_SATELLITE_TILES;
+function buildBasemapTileLayer(
+  mapView: Exclude<MapView, '3d'>,
+  theme: 'light' | 'dark',
+): TileLayer {
+  const cartoTiles =
+    theme === 'dark' ? CARTO_DARK_MATTER_TILES : CARTO_POSITRON_TILES;
+  const data = mapView === '2d' ? cartoTiles : ESRI_SATELLITE_TILES;
   return new TileLayer({
-    id: `basemap-${mapView}`,
+    id: `basemap-${mapView}-${theme}`,
     data,
     minZoom: 0,
     maxZoom: 19,

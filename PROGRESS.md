@@ -2972,3 +2972,90 @@ The module-scope `cached` / `inflightPromise` / `subscribers` / `pollTimerId` si
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, ~13 s)
+
+---
+
+## 2026-06-04 — Light/dark theme + next-gen UI redesign
+
+Full visual-layer pass — no behavior changes. The app now ships with a light Apple-Maps-style aesthetic by default and a dark glassmorphism mode toggled from a sun/moon button in the top-right corner. Preference persists to localStorage; flipping the toggle crossfades the entire UI in 300 ms with no layout shift.
+
+**Design system** — [src/styles/globals.css](src/styles/globals.css)
+
+| Token group | Light | Dark |
+|---|---|---|
+| `--gma-bg` | `#f7f8fa` | `#080810` |
+| `--gma-surface` | `#ffffff` | `rgba(255, 255, 255, 0.08)` (glass) |
+| `--gma-border` | `rgba(0, 0, 0, 0.06)` | `rgba(255, 255, 255, 0.12)` |
+| `--gma-text-primary` | `#1a1a2e` | `#f1f5f9` |
+| `--gma-glow-amber` | transparent | `0 0 24px rgba(245, 158, 11, 0.45)` |
+| `--gma-shadow-md` | soft grey | deep black |
+
+Every component reads these tokens, so the entire color/elevation system flips through one `html.dark` class swap. A global `* { transition: background-color, color, border-color, box-shadow, backdrop-filter 300ms ease }` rule crossfades the whole tree at once.
+
+**New utility classes**
+
+- `.gma-card` — surface + border + shadow. Adds backdrop-filter blur in dark mode.
+- `.gma-glass` / `.gma-glass-strong` — backdrop-filtered translucent surfaces.
+- `.gma-press` — `transform: scale(0.95)` on active, springs back via cubic-bezier(0.5, 1.6, 0.4, 1).
+- `.gma-press-soft` — gentler 0.98 scale for the Start button.
+- `.gma-pop-in` — keyframed scale + translate intro for toasts/dropdowns.
+- `.gma-shimmer` — left-to-right gradient sweep for skeleton placeholders.
+- `.gma-lift` — translateY + shadow on hover (route cards).
+- `.gma-glow-amber` / `.gma-glow-wind` — applies the corresponding glow box-shadow (no-op in light, lit in dark).
+
+**Theme infra**
+
+- [src/hooks/useTheme.ts](src/hooks/useTheme.ts) — single source of truth. State `'light' | 'dark'`, defaults to light, persisted under `gma:theme`. Toggling applies `class="dark"` on `<html>`. Exposes `{ theme, toggle, setTheme }`.
+- [src/components/ThemeToggle.tsx](src/components/ThemeToggle.tsx) — 44 px round floating button in the top-right corner. Sun + moon SVGs are stacked and crossfaded with a 220 ms opacity + 300 ms spring transform — no layout shift on toggle.
+
+**Inter font**
+
+[index.html](index.html) — Google Fonts call expanded to include `Inter:400/500/600/700` alongside `DM Mono`. `--font-ui` set to `'Inter', system fallbacks…`; `--font-data` unchanged.
+
+**Per-component changes**
+
+| Component | Light mode | Dark mode |
+|---|---|---|
+| [SearchBar](src/components/SearchBar.tsx) | `.gma-card` rounded-2xl, hairline border, `var(--gma-shadow-lg)`. Origin dot = blue pulsing ring; destination dot = solid amber. Swap button rotates 180° on press (CSS spring via [SearchBar.css](src/components/SearchBar.css)). | Same structure, glass surface, blue + amber dots glow against the dark surface. |
+| [TransportModeSwitcher](src/components/TransportModeSwitcher.tsx) | White rounded-2xl card, 24 px icons + uppercase label, active pill fills with live dayColor. | Glass card, active pill picks up `--gma-glow-amber` glow ring. Every pill uses `.gma-press`. |
+| [TimePicker](src/components/TimePicker.tsx) | White pill trigger + dropdown, native datetime-local input themed. | Glass pill + `.gma-pop-in` glass dropdown. Top offset shifted from 13.5 rem → 15.5 rem to clear the now-taller transport pills. |
+| [RouteSheet](src/components/RouteSheet.tsx) | `.gma-card` rounded-top sheet, filter pills + cards on white. FASTEST stays grey (`--gma-hover-bg`); GMA PICK uses an amber linear gradient + glow. Start button is a 135° amber gradient with `.gma-press-soft`. Skeletons use the new `.gma-shimmer` sweep. | Same layout on glass; pills + Start glow in amber/violet/cyan depending on the filter accent. |
+| [SunCompass](src/components/SunCompass.tsx) | Compact 80 px disc inside a `.gma-card`. SVG strokes/fills swapped to `--gma-border-strong` / `--gma-text-muted` so they invert cleanly. | Same disc on a glass surface; violet wind arrow stays violet (works in both modes). |
+| [NavigationHeader](src/components/NavigationHeader.tsx) + [NextTurnIndicator](src/components/NextTurnIndicator.tsx) | Clean white pills with strong shadows. | Glassmorphism pills; the Stop button uses `.gma-press`. |
+| [MapViewSwitcher](src/components/MapViewSwitcher.tsx) | White vertical pill, active option highlights with `--gma-press-bg`. | Glass pill, same accent logic. |
+| [Toast](src/components/Toast.tsx) | `.gma-card` with `--gma-shadow-lg`. | Same primitive; glass + dark elevation. |
+| [RouteLegend](src/components/RouteLegend.tsx) | White pill, offset bumped from 17 rem → 19 rem to clear the taller transport switcher. | Glass pill. |
+| [DataAttribution](src/components/DataAttribution.tsx) | `.gma-glass` pill — explicit blur, no longer a baked rgba. | Same primitive picks up the dark glass tokens. |
+| [ThemeToggle](src/components/ThemeToggle.tsx) | White round button. | Glass round button, backdrop-blur applied inline because Tailwind's class composition can't conditionally toggle a filter. |
+
+**Map overlays — GMACanvas** ([src/components/GMACanvas.tsx](src/components/GMACanvas.tsx))
+
+- New `theme: 'light' | 'dark'` prop.
+- Basemap: 2D mode picks `CARTO_POSITRON_TILES` (light) or `CARTO_DARK_MATTER_TILES` (dark). 3D and satellite are unchanged — they already render dark-friendly.
+- Overlay alpha multiplier: light 1.0 (overlays stay ≤ ~0.2 alpha, basemap legible); dark 2.0 (overlays jump to ~0.5 alpha, route + glare hotspots pop). Applied to forest fill, building shadows, glare hotspots via the `tintAlpha()` helper. Street sun overlay and route polyline keep their per-segment colors verbatim — those drive the comfort signal and shouldn't shift on theme.
+- Glare hotspots in dark mode bump radius 15 → 22 m + min-pixel 6 → 10 so they read as glowing markers rather than tinted dots.
+- Tooltip background swaps to a dark-glass surface in dark mode.
+
+**App.tsx wiring**
+
+- Imports `useTheme` + `ThemeToggle`.
+- `const { theme, toggle: toggleTheme } = useTheme()` at the top of `App()`.
+- `GMACanvas` receives `theme={theme}`.
+- `<ThemeToggle theme={theme} onToggle={toggleTheme} />` mounted right after `GMACanvas` so it sits on top of every other overlay.
+
+**Files touched**
+
+- New: [src/hooks/useTheme.ts](src/hooks/useTheme.ts), [src/components/ThemeToggle.tsx](src/components/ThemeToggle.tsx), [src/components/SearchBar.css](src/components/SearchBar.css).
+- Rewritten: [src/styles/globals.css](src/styles/globals.css), [src/components/TransportModeSwitcher.tsx](src/components/TransportModeSwitcher.tsx), [src/components/TimePicker.tsx](src/components/TimePicker.tsx).
+- Updated: [src/components/SearchBar.tsx](src/components/SearchBar.tsx), [src/components/SunCompass.tsx](src/components/SunCompass.tsx), [src/components/MapViewSwitcher.tsx](src/components/MapViewSwitcher.tsx), [src/components/NavigationHeader.tsx](src/components/NavigationHeader.tsx), [src/components/NextTurnIndicator.tsx](src/components/NextTurnIndicator.tsx), [src/components/Toast.tsx](src/components/Toast.tsx), [src/components/RouteLegend.tsx](src/components/RouteLegend.tsx), [src/components/DataAttribution.tsx](src/components/DataAttribution.tsx), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx), [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx), [src/App.tsx](src/App.tsx), [index.html](index.html).
+
+**Verification**
+
+- Every component still uses `var(--gma-*)` tokens — single class swap on `<html>` flips the whole palette.
+- The 300 ms global transition rule applies to background/border/color/shadow/backdrop-filter only — transforms + opacity manage their own timing, so press animations stay snappy.
+- All deck.gl layers' memo deps include `theme`, so the canvas re-paints with the right palette + basemap on toggle.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, CSS ~28 KB / gzip 6.4 KB, ~14 s)

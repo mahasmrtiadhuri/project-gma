@@ -70,27 +70,23 @@ export function SunCompass({
   return (
     <div
       className={
-        'pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+2.5rem)] left-4 z-30 flex flex-col items-stretch gap-2 rounded-2xl bg-white px-3 py-2.5' +
+        'gma-card pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+2.5rem)] left-4 z-30 flex flex-col items-stretch gap-2 rounded-2xl px-3 py-2.5' +
         // Hide on mobile when the bottom route sheet is open — the sheet
         // is full-width on mobile and would overlap the compass.
         (routeSheetOpen ? ' max-sm:hidden' : '')
       }
-      style={{
-        boxShadow: 'var(--gma-shadow-md)',
-        border: '1px solid var(--gma-border)',
-        minWidth: '112px',
-      }}
+      style={{ minWidth: '112px' }}
       aria-label="Sun position and data sources"
     >
-      <div className="mx-auto h-[70px] w-[70px] sm:h-[88px] sm:w-[88px]">
+      <div className="mx-auto h-[70px] w-[70px] sm:h-[80px] sm:w-[80px]">
         <svg viewBox="0 0 120 120" className="h-full w-full" aria-hidden="true">
           {/* Outer disc */}
           <circle
             cx="60"
             cy="60"
             r="56"
-            fill="rgba(0, 0, 0, 0.025)"
-            stroke="rgba(0, 0, 0, 0.10)"
+            fill="var(--gma-input-bg)"
+            stroke="var(--gma-border-strong)"
             strokeWidth="1"
           />
           {/* Cardinal tick marks */}
@@ -101,7 +97,7 @@ export function SunCompass({
               y1="6"
               x2="60"
               y2="14"
-              stroke="rgba(0, 0, 0, 0.30)"
+              stroke="var(--gma-text-muted)"
               strokeWidth="1"
               transform={`rotate(${angle} 60 60)`}
             />
@@ -181,7 +177,7 @@ export function SunCompass({
             </g>
           )}
 
-          <circle cx="60" cy="60" r="2.5" fill="rgba(0, 0, 0, 0.5)" />
+          <circle cx="60" cy="60" r="2.5" fill="var(--gma-text-secondary)" />
         </svg>
       </div>
 

@@ -7,14 +7,10 @@
 export function DataAttribution() {
   return (
     <div
-      className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 text-[10px]"
+      className="gma-glass pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4px)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 text-[10px]"
       style={{
-        background: 'rgba(255, 255, 255, 0.82)',
         color: 'var(--gma-text-secondary)',
-        border: '1px solid var(--gma-border)',
         boxShadow: 'var(--gma-shadow-sm)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
         fontFamily: 'var(--font-data)',
       }}
       aria-label="Data sources"

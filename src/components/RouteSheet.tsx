@@ -269,10 +269,9 @@ export function RouteSheet({
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[60dvh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl bg-white pb-[max(env(safe-area-inset-bottom,0px),16px)] sm:max-h-[75dvh]"
+      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[60dvh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl pb-[max(env(safe-area-inset-bottom,0px),16px)] sm:max-h-[75dvh]"
       style={{
         boxShadow: 'var(--gma-shadow-lg)',
-        border: '1px solid var(--gma-border)',
         borderBottom: 'none',
       }}
       role="dialog"
@@ -282,7 +281,7 @@ export function RouteSheet({
         type="button"
         onClick={onDismiss}
         aria-label="Close routes"
-        className="absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full text-[var(--gma-text-secondary)] hover:bg-black/5 hover:text-[var(--gma-text-primary)]"
+        className="gma-press absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)]"
       >
         <CloseIcon />
       </button>
@@ -315,16 +314,17 @@ export function RouteSheet({
               key={mode}
               type="button"
               onClick={() => onFilterChange(mode)}
-              className="inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-sm transition-colors"
+              className="gma-press inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-sm"
               style={
                 active
                   ? {
                       background: accent,
                       borderColor: 'transparent',
-                      color: '#ffffff',
+                      color: 'var(--gma-text-on-accent)',
+                      boxShadow: 'var(--gma-glow-amber)',
                     }
                   : {
-                      background: 'rgba(0, 0, 0, 0.04)',
+                      background: 'var(--gma-hover-bg)',
                       borderColor: 'transparent',
                       color: 'var(--gma-text-secondary)',
                     }
@@ -350,8 +350,8 @@ export function RouteSheet({
           maxLength={140}
           className="h-11 flex-1 rounded-full px-4 text-sm outline-none placeholder:text-[var(--gma-text-muted)] disabled:opacity-60"
           style={{
-            background: 'rgba(0, 0, 0, 0.04)',
-            border: '1px solid var(--gma-border)',
+            background: 'var(--gma-input-bg)',
+            border: '1px solid var(--gma-input-border)',
             color: 'var(--gma-text-primary)',
           }}
           aria-label="Routing preference"
@@ -359,10 +359,11 @@ export function RouteSheet({
         <button
           type="submit"
           disabled={geminiBusy || preferenceInput.trim().length === 0}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40"
+          className="gma-press flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
           style={{
             background: dayAccent,
-            color: '#ffffff',
+            color: 'var(--gma-text-on-accent)',
+            boxShadow: 'var(--gma-glow-amber)',
           }}
           aria-label={geminiBusy ? 'Interpreting…' : 'Send to Gemini'}
         >
@@ -553,10 +554,13 @@ export function RouteSheet({
           <button
             type="button"
             onClick={onStartNavigation}
-            className="flex h-14 w-full items-center justify-center gap-2 rounded-xl text-base font-medium uppercase tracking-wider transition-transform active:scale-[0.98]"
+            className="gma-press-soft flex h-14 w-full items-center justify-center gap-2 rounded-xl text-base font-medium uppercase tracking-wider"
             style={{
-              background: dayAccent,
-              color: '#ffffff',
+              backgroundImage: `linear-gradient(135deg, ${dayAccent} 0%, color-mix(in srgb, ${dayAccent} 80%, #b45309) 100%)`,
+              backgroundColor: dayAccent,
+              color: 'var(--gma-text-on-accent)',
+              boxShadow:
+                'var(--gma-shadow-md), var(--gma-glow-amber)',
             }}
           >
             <NavIcon />
@@ -590,8 +594,12 @@ interface RouteCardProps {
 const GMA_ACCENT = 'rgb(245, 158, 11)'; //         amber-500 (sun fallback)
 const GMA_WIND_ACCENT = 'rgb(168, 85, 247)'; //    violet-500
 const GMA_RAIN_ACCENT = 'rgb(6, 182, 212)'; //     cyan-500
-const FASTEST_BADGE_BG = 'rgba(0, 0, 0, 0.06)';
+const FASTEST_BADGE_BG = 'var(--gma-hover-bg)';
 const FASTEST_BADGE_FG = 'var(--gma-text-secondary)';
+
+function gmaPickGradient(accent: string): string {
+  return `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 80%, #92400e) 100%)`;
+}
 
 function gmaAccentFor(mode: FilterMode): string {
   if (mode === 'avoid-wind') return GMA_WIND_ACCENT;
@@ -625,20 +633,25 @@ function RouteCard({
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className="flex min-h-[64px] w-full items-stretch gap-3 overflow-hidden rounded-xl border p-3 text-left transition-colors"
+      className="gma-lift flex min-h-[64px] w-full items-stretch gap-3 overflow-hidden rounded-xl border p-3 text-left"
       style={
         selected
           ? {
               borderColor: dayAccent,
-              background: 'rgba(255, 160, 0, 0.06)',
+              background:
+                'color-mix(in srgb, var(--gma-surface) 80%, ' +
+                dayAccent +
+                ' 20%)',
               boxShadow: `inset 0 0 0 1px ${dayAccent}, inset 4px 0 0 0 ${accentBorderLeft}`,
             }
           : {
               borderColor: 'var(--gma-border)',
               background:
                 variant === 'gma' || variant === 'combined'
-                  ? 'rgba(245, 158, 11, 0.04)'
-                  : '#ffffff',
+                  ? 'color-mix(in srgb, var(--gma-surface) 92%, ' +
+                    gmaAccent +
+                    ' 8%)'
+                  : 'var(--gma-surface)',
               boxShadow: `inset 4px 0 0 0 ${accentBorderLeft}`,
             }
       }
@@ -674,8 +687,10 @@ function RouteCard({
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
               style={{
-                background: gmaAccent,
-                color: '#ffffff',
+                backgroundImage: gmaPickGradient(gmaAccent),
+                backgroundColor: gmaAccent,
+                color: 'var(--gma-text-on-accent)',
+                boxShadow: 'var(--gma-glow-amber)',
               }}
             >
               <PickFilterIcon mode={filterMode} />
@@ -967,10 +982,10 @@ function MoreOptionsSection({
       <button
         type="button"
         onClick={onToggle}
-        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-xs uppercase tracking-wider text-[var(--gma-text-secondary)] transition-colors hover:bg-black/[0.02]"
+        className="gma-press flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-xs uppercase tracking-wider text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)]"
         style={{
           borderColor: 'var(--gma-border)',
-          background: 'rgba(0, 0, 0, 0.02)',
+          background: 'var(--gma-input-bg)',
         }}
         aria-expanded={expanded}
       >
@@ -1069,35 +1084,35 @@ function PickRainIcon() {
 }
 
 function SkeletonRouteCard() {
-  // Subtle shimmering placeholder matching the RouteCard's 64 px min
-  // height. Uses CSS animate-pulse so the demo feels responsive while
-  // the Routes API + Solar API are still in flight.
+  // Shimmering placeholder matching the RouteCard's 64 px min height.
+  // Uses `.gma-shimmer` so the bar sweeps left-to-right across each
+  // placeholder block, reading like a Skeleton in both light + dark.
   return (
     <div
       aria-hidden="true"
-      className="flex min-h-[64px] w-full animate-pulse items-center gap-3 rounded-xl border p-3"
+      className="flex min-h-[64px] w-full items-center gap-3 rounded-xl border p-3"
       style={{
         borderColor: 'var(--gma-border)',
-        background: 'rgba(0, 0, 0, 0.02)',
+        background: 'var(--gma-input-bg)',
       }}
     >
       <div
-        className="h-5 w-5 shrink-0 rounded-full"
-        style={{ background: 'rgba(0, 0, 0, 0.08)' }}
+        className="gma-shimmer h-5 w-5 shrink-0 rounded-full"
+        style={{ background: 'var(--gma-hover-bg)' }}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div
-          className="h-3.5 w-20 rounded"
-          style={{ background: 'rgba(0, 0, 0, 0.10)' }}
+          className="gma-shimmer h-3.5 w-20 rounded"
+          style={{ background: 'var(--gma-hover-bg)' }}
         />
         <div
-          className="h-3 w-36 rounded"
-          style={{ background: 'rgba(0, 0, 0, 0.06)' }}
+          className="gma-shimmer h-3 w-36 rounded"
+          style={{ background: 'var(--gma-hover-bg)' }}
         />
       </div>
       <div
-        className="h-6 w-16 shrink-0 rounded-full"
-        style={{ background: 'rgba(0, 0, 0, 0.06)' }}
+        className="gma-shimmer h-6 w-16 shrink-0 rounded-full"
+        style={{ background: 'var(--gma-hover-bg)' }}
       />
     </div>
   );

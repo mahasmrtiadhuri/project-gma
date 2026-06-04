@@ -17,9 +17,11 @@ const MODE_OPTIONS: ReadonlyArray<{ key: TimeMode; label: string }> = [
 ];
 
 /**
- * Light departure/arrival time picker — sits under the transport mode
- * pills. Clock-icon trigger pill opens a dropdown with three modes plus a
+ * Departure/arrival time picker — sits under the transport mode pills.
+ * Clock-icon trigger pill opens a dropdown with three modes plus a
  * native datetime-local input when a planned-time mode is active.
+ *
+ * Light = white card; dark = glassmorphism pill + dropdown.
  */
 export function TimePicker({
   mode,
@@ -69,16 +71,12 @@ export function TimePicker({
   return (
     <div
       ref={wrapperRef}
-      className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+13.5rem)] z-20 w-[min(300px,calc(100vw-2rem))] -translate-x-1/2"
+      className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+15.5rem)] z-20 w-[min(300px,calc(100vw-2rem))] -translate-x-1/2"
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-4 text-sm text-[var(--gma-text-primary)] transition-colors hover:bg-black/[0.02]"
-        style={{
-          boxShadow: 'var(--gma-shadow-md)',
-          border: '1px solid var(--gma-border)',
-        }}
+        className="gma-card gma-press flex h-11 w-full items-center justify-center gap-2 rounded-full px-4 text-sm text-[var(--gma-text-primary)]"
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -89,11 +87,8 @@ export function TimePicker({
 
       {open && (
         <div
-          className="absolute left-1/2 top-full z-40 mt-2 w-[min(320px,92vw)] -translate-x-1/2 rounded-xl bg-white p-2"
-          style={{
-            boxShadow: 'var(--gma-shadow-lg)',
-            border: '1px solid var(--gma-border)',
-          }}
+          className="gma-card gma-pop-in absolute left-1/2 top-full z-40 mt-2 w-[min(320px,92vw)] -translate-x-1/2 rounded-xl p-2"
+          style={{ boxShadow: 'var(--gma-shadow-lg)' }}
           role="dialog"
           aria-label="Choose departure or arrival time"
         >
@@ -105,12 +100,12 @@ export function TimePicker({
                   key={opt.key}
                   type="button"
                   onClick={() => handleModeSelect(opt.key)}
-                  className="flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors"
+                  className="gma-press flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm"
                   style={
                     active
                       ? {
                           background: accentRgb,
-                          color: '#ffffff',
+                          color: 'var(--gma-text-on-accent)',
                         }
                       : { color: 'var(--gma-text-primary)' }
                   }
@@ -133,9 +128,9 @@ export function TimePicker({
                 onChange={handleTimeInput}
                 className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                 style={{
-                  background: 'rgba(0, 0, 0, 0.03)',
+                  background: 'var(--gma-input-bg)',
                   color: 'var(--gma-text-primary)',
-                  border: '1px solid var(--gma-border)',
+                  border: '1px solid var(--gma-input-border)',
                   fontFamily: 'var(--font-data)',
                 }}
                 aria-label={

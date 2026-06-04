@@ -20,6 +20,8 @@ import { SunGlow } from './components/SunGlow';
 import { DataAttribution } from './components/DataAttribution';
 import { RouteLegend } from './components/RouteLegend';
 import { Toast } from './components/Toast';
+import { ThemeToggle } from './components/ThemeToggle';
+import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
 import { useWeatherData } from './hooks/useWeatherData';
 import { useCurrentLocation } from './hooks/useCurrentLocation';
@@ -119,6 +121,11 @@ export default function App() {
   // a filter pill manually (manual choice is implicitly default-intensity).
   const [intensityMultiplier, setIntensityMultiplier] = useState(1.0);
   const [geminiBusy, setGeminiBusy] = useState(false);
+
+  // Theme toggle — defaults to 'light', persisted to localStorage by
+  // the hook. Applies `class="dark"` to <html>, which trips the dark
+  // tokens in globals.css and crossfades the entire UI in 300 ms.
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // Live geolocation watch is gated on `navigating` so we don't drain
   // battery / spam the permission prompt outside of an active route.
@@ -952,7 +959,10 @@ export default function App() {
             : null
         }
         navigating={navigating}
+        theme={theme}
       />
+
+      <ThemeToggle theme={theme} onToggle={toggleTheme} />
 
       <SunGlow
         sunAzimuthDeg={solar.azimuthDeg}

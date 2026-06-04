@@ -1,0 +1,25 @@
+/* SearchBar-local animations. The pulsing origin dot uses two stacked
+ * SVG circles — one solid, one expanding outward and fading. */
+@keyframes gma-origin-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.gma-origin-pulse {
+  animation: gma-origin-pulse 1.6s ease-out infinite;
+  transform-origin: center;
+}
+
+/* Swap button rotates 180° with a spring on click. */
+.gma-swap-icon {
+  transition: transform 300ms cubic-bezier(0.5, 1.6, 0.4, 1);
+}
+.gma-swap-button:active .gma-swap-icon {
+  transform: rotate(180deg);
+}

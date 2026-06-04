@@ -41,11 +41,9 @@ export function Toast({ message, durationMs = 3000 }: ToastProps) {
       aria-live="polite"
     >
       <div
-        className="rounded-2xl bg-white px-5 py-3 text-base"
+        className="gma-card rounded-2xl px-5 py-3 text-base"
         style={{
-          boxShadow:
-            '0 12px 28px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.06)',
-          border: '1px solid var(--gma-border)',
+          boxShadow: 'var(--gma-shadow-lg)',
           color: 'var(--gma-text-primary)',
           fontWeight: 500,
           letterSpacing: '0.01em',

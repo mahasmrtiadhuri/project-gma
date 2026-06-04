@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import './SearchBar.css';
 import {
   loadPlacesLibrary,
   onMapsAuthFailure,
@@ -38,13 +39,11 @@ export function SearchBar({
   onSwap,
 }: SearchBarProps) {
   return (
-    <div className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-50 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2">
+    <div className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-50 w-[min(460px,calc(100vw-4.5rem))] -translate-x-1/2">
       <div
-        className="relative flex flex-col rounded-2xl bg-white p-4"
+        className="gma-card relative flex flex-col rounded-2xl p-4"
         style={{
-          boxShadow:
-            '0 14px 36px rgba(0, 0, 0, 0.10), 0 4px 12px rgba(0, 0, 0, 0.05)',
-          border: '1px solid var(--gma-border)',
+          boxShadow: 'var(--gma-shadow-lg)',
           overflow: 'visible',
         }}
       >
@@ -82,7 +81,7 @@ export function SearchBar({
           onClick={onSwap}
           disabled={!origin || !destination}
           aria-label="Swap origin and destination"
-          className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-2 text-[var(--gma-text-secondary)] transition-colors hover:bg-black/5 hover:text-[var(--gma-text-primary)] disabled:opacity-30"
+          className="gma-swap-button gma-press absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-2 text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)] disabled:opacity-30"
         >
           <SwapIcon />
         </button>
@@ -346,9 +345,9 @@ function PlaceField({
         spellCheck={false}
         className="w-full rounded-lg px-3.5 py-3 text-base outline-none placeholder:text-[var(--gma-text-muted)]"
         style={{
-          background: 'rgba(0, 0, 0, 0.025)',
+          background: 'var(--gma-input-bg)',
           color: 'var(--gma-text-primary)',
-          border: '1px solid var(--gma-border)',
+          border: '1px solid var(--gma-input-border)',
           fontFamily: 'inherit',
         }}
       />
@@ -358,7 +357,7 @@ function PlaceField({
           type="button"
           onClick={handleClear}
           aria-label="Clear"
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--gma-text-muted)] hover:bg-black/5 hover:text-[var(--gma-text-primary)]"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--gma-text-muted)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)]"
         >
           <CloseIcon />
         </button>
@@ -368,10 +367,9 @@ function PlaceField({
         <div
           id={`${ariaLabel}-suggestions`}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl bg-white"
+          className="gma-card gma-pop-in absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl"
           style={{
             boxShadow: 'var(--gma-shadow-lg)',
-            border: '1px solid var(--gma-border)',
           }}
         >
           {suggestions.map((s, i) => {
@@ -393,7 +391,7 @@ function PlaceField({
                 style={{
                   borderColor: 'var(--gma-border)',
                   background: isHighlighted
-                    ? 'rgba(0, 0, 0, 0.05)'
+                    ? 'var(--gma-hover-bg)'
                     : 'transparent',
                 }}
               >
@@ -418,14 +416,23 @@ function PlaceField({
 
 function OriginDot() {
   return (
-    <span className="inline-block h-3 w-3 rounded-full border-2 border-[var(--gma-text-secondary)]" />
+    <span className="relative inline-flex h-3 w-3 items-center justify-center">
+      <span
+        className="gma-origin-pulse absolute inset-0 rounded-full"
+        style={{ background: 'rgb(59, 130, 246)' }}
+      />
+      <span
+        className="relative inline-block h-3 w-3 rounded-full"
+        style={{ background: 'rgb(59, 130, 246)' }}
+      />
+    </span>
   );
 }
 
 function DestinationDot() {
   return (
     <span
-      className="inline-block h-3 w-3 rounded-sm"
+      className="inline-block h-3 w-3 rounded-full"
       style={{ background: 'var(--gma-accent-sun)' }}
     />
   );
@@ -433,7 +440,14 @@ function DestinationDot() {
 
 function SwapIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      className="gma-swap-icon"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M7 4v16M7 4l-3 3M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"
         stroke="currentColor"
