@@ -2919,3 +2919,56 @@ Everything else suppressed until the user exits navigation mode.
 
 - `tsc -b` clean
 - `vite build` clean (~1.43 MB main chunk, ~17 s)
+
+---
+
+## 2026-06-04 — Open-Meteo fallback for the weather pipeline
+
+Google Weather has had transient drop-outs where the v1 beta returns 200 with no `cloudCover` block. Without cloud cover the glare model overstates sun intensity, and the SunCompass dimming reads wrong. To make the demo robust to that we now fall back to Open-Meteo — free, keyless, and well-shaped for the same `WeatherSnapshot` type.
+
+**Trigger conditions** (any of these, in [src/hooks/useWeatherData.ts](src/hooks/useWeatherData.ts) `fetchWeather`):
+
+1. Google HTTP not-ok.
+2. Google fetch throws (network error).
+3. Google 200 with missing wind block (`normalize` returns null — pre-existing check).
+4. Google 200 with missing cloud cover (`normalize` returns null — NEW check).
+
+When the fallback activates we log `[GMA] Weather: using Open-Meteo fallback` plus the raw payload, so the source of any given snapshot is easy to verify in DevTools.
+
+**Endpoint**
+
+```
+GET https://api.open-meteo.com/v1/forecast
+    ?latitude={lat}
+    &longitude={lng}
+    &current=cloud_cover,wind_speed_10m,wind_direction_10m,precipitation_probability,temperature_2m
+    &timezone=auto
+```
+
+`temperature_2m` added beyond the spec'd field list — `WeatherSnapshot.temperatureF` is required by downstream consumers (feels-like temp badge, route comparison line). Without it, the badge would always read 32 °F.
+
+**WeatherSnapshot mapping** (in `normalizeOpenMeteo`)
+
+| WeatherSnapshot field | Open-Meteo source | Notes |
+|---|---|---|
+| `windSpeedMph` | `current.wind_speed_10m` | Unit-aware conversion via `openMeteoWindToMph(value, unit)`; defaults to km/h, also handles mph/m/s/knots |
+| `windDirectionDeg` | `current.wind_direction_10m` | Degrees clockwise from N (same convention as Google) |
+| `cloudCoverPct` | `current.cloud_cover` | `clampPct` — required field, returns null if absent |
+| `temperatureF` | `current.temperature_2m` | Unit-aware via `openMeteoTempToF`; defaults to °C |
+| `precipitationProbability` | `current.precipitation_probability` | `clampPct`, 0 if absent |
+| `precipitationType` | derived | `'rain'` if probability > 0 else `'none'`. Open-Meteo's free `current` block does not classify type; doing so would require weather_code mapping which is overkill for a fallback path |
+| `fetchedAt` | client wall clock | |
+| `isDaytime` / `sunriseTime` / `sunsetTime` | not surfaced | Left `undefined`; `daylight.ts` `computeSunTimes()` already supplies these client-side when absent |
+
+**Singleton + polling unchanged**
+
+The module-scope `cached` / `inflightPromise` / `subscribers` / `pollTimerId` singleton is untouched — the fallback rides inside `fetchWeather`, so dedup, in-flight coalescing, and the 10-minute poll timer all apply transparently to Open-Meteo too.
+
+**Files touched**
+
+- [src/hooks/useWeatherData.ts](src/hooks/useWeatherData.ts) — `normalize` returns null when `cloudCover` is undefined/null; `fetchWeather` now `try`/`catch`-wraps the Google call and falls back via `fetchOpenMeteo(lat, lng)` on any failure or unusable payload; added `fetchOpenMeteo`, `OpenMeteoResponse` interface, `normalizeOpenMeteo`, `openMeteoWindToMph`, `openMeteoTempToF`.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, ~13 s)

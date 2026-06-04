@@ -4,7 +4,10 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(echo \"TSC_EXIT=$?\")",
       "Bash(echo \"VITE_EXIT=$?\")",
-      "Bash(grep -c \"vite build\\\\` clean \\(~1.42 MB main chunk, ~12 s\\)\" PROGRESS.md)"
+      "Bash(grep -c \"vite build\\\\` clean \\(~1.42 MB main chunk, ~12 s\\)\" PROGRESS.md)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

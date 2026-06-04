@@ -150,19 +150,135 @@ async function fetchWeather(
     `&location.latitude=${lat}` +
     `&location.longitude=${lng}`;
 
-  const response = await fetch(url);
-  if (!response.ok) {
-    const body = await response.text();
-    console.warn(`[GMA] Weather API ${response.status}:`, body.slice(0, 500));
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(`[GMA] Weather API ${response.status}:`, body.slice(0, 500));
+      return fetchOpenMeteo(lat, lng);
+    }
+
+    const raw: unknown = await response.json();
+    // Logged every poll so it's easy to verify live data in DevTools. ~1 line
+    // per 10 minutes — not noisy.
+    console.log('[GMA] Weather API raw response:', raw);
+
+    const snap = normalize(raw as GoogleWeatherResponse);
+    if (snap) return snap;
+
+    // Google responded 200 but the payload was unusable (missing wind
+    // or missing cloud cover). Fall through to Open-Meteo rather than
+    // returning null to the consumer.
+    return fetchOpenMeteo(lat, lng);
+  } catch (err) {
+    console.warn('[GMA] Weather API fetch threw:', err);
+    return fetchOpenMeteo(lat, lng);
+  }
+}
+
+// ---------- Open-Meteo fallback --------------------------------------------
+//
+// Free, keyless current-conditions endpoint. Activates whenever the Google
+// Weather call fails (HTTP error, network error, or 200 with missing wind /
+// cloud cover). Mapped onto the same WeatherSnapshot shape so downstream
+// consumers (route scorer, SunCompass, route card) are agnostic to the
+// source. Open-Meteo's `current` block does not surface precipitation type
+// or sunrise/sunset, so those fields degrade to 'rain'/'none' based on
+// probability and to undefined respectively — daylight.ts already does a
+// client-side daylight calc when these are absent.
+
+const OPEN_METEO_ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
+
+async function fetchOpenMeteo(
+  lat: number,
+  lng: number,
+): Promise<WeatherSnapshot | null> {
+  // temperature_2m added beyond the spec'd field list because
+  // WeatherSnapshot.temperatureF is required — without it the feels-like
+  // badge would always show 32 °F.
+  const url =
+    `${OPEN_METEO_ENDPOINT}?latitude=${lat}&longitude=${lng}` +
+    `&current=cloud_cover,wind_speed_10m,wind_direction_10m,precipitation_probability,temperature_2m` +
+    `&timezone=auto`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(
+        `[GMA] Open-Meteo HTTP ${response.status}:`,
+        body.slice(0, 500),
+      );
+      return null;
+    }
+    const raw: unknown = await response.json();
+    console.log('[GMA] Weather: using Open-Meteo fallback', raw);
+    return normalizeOpenMeteo(raw as OpenMeteoResponse);
+  } catch (err) {
+    console.warn('[GMA] Open-Meteo fetch threw:', err);
+    return null;
+  }
+}
+
+interface OpenMeteoResponse {
+  current?: {
+    time?: string;
+    cloud_cover?: number;
+    wind_speed_10m?: number;
+    wind_direction_10m?: number;
+    precipitation_probability?: number;
+    temperature_2m?: number;
+  };
+  current_units?: {
+    wind_speed_10m?: string;
+    temperature_2m?: string;
+  };
+}
+
+function normalizeOpenMeteo(json: OpenMeteoResponse): WeatherSnapshot | null {
+  const c = json.current;
+  if (
+    !c ||
+    c.wind_speed_10m === undefined ||
+    c.wind_direction_10m === undefined ||
+    c.cloud_cover === undefined
+  ) {
+    console.warn('[GMA] Open-Meteo response missing required fields', json);
     return null;
   }
 
-  const raw: unknown = await response.json();
-  // Logged every poll so it's easy to verify live data in DevTools. ~1 line
-  // per 10 minutes — not noisy.
-  console.log('[GMA] Weather API raw response:', raw);
+  const windUnit = json.current_units?.wind_speed_10m ?? 'km/h';
+  const tempUnit = json.current_units?.temperature_2m ?? '°C';
+  const precipPct = clampPct(c.precipitation_probability ?? 0);
 
-  return normalize(raw as GoogleWeatherResponse);
+  return {
+    windSpeedMph: openMeteoWindToMph(c.wind_speed_10m, windUnit),
+    windDirectionDeg: c.wind_direction_10m,
+    cloudCoverPct: clampPct(c.cloud_cover),
+    temperatureF: openMeteoTempToF(c.temperature_2m ?? 0, tempUnit),
+    precipitationProbability: precipPct,
+    // Open-Meteo's free `current` block does not classify precipitation
+    // type — default to rain when probability > 0 (snow/sleet would
+    // require the dedicated weather_code field which adds complexity for
+    // marginal value at a fallback path).
+    precipitationType: precipPct > 0 ? 'rain' : 'none',
+    fetchedAt: new Date(),
+    // isDaytime / sunrise / sunset intentionally undefined — daylight.ts
+    // computeSunTimes() supplies these client-side when absent.
+  };
+}
+
+function openMeteoWindToMph(value: number, unit: string): number {
+  const u = unit.toLowerCase();
+  if (u.includes('mph')) return value;
+  if (u.includes('m/s')) return value * 2.236_94;
+  if (u.includes('kn')) return value * 1.150_78;
+  // Open-Meteo default is km/h.
+  return value * 0.621_371;
+}
+
+function openMeteoTempToF(value: number, unit: string): number {
+  return unit.includes('F') ? value : (value * 9) / 5 + 32;
 }
 
 interface GoogleWeatherResponse {
@@ -214,6 +330,16 @@ function normalize(json: GoogleWeatherResponse): WeatherSnapshot | null {
     return null;
   }
 
+  // Cloud cover drives the glare model + the SunCompass dimming — if the
+  // Google response omits it (some v1 betas have done so transiently),
+  // we treat the response as unusable so the caller can fall back to
+  // Open-Meteo rather than silently substituting 0 % and overstating
+  // sun intensity.
+  if (json.cloudCover === undefined || json.cloudCover === null) {
+    console.warn('[GMA] Weather API response missing cloud cover', json);
+    return null;
+  }
+
   const sunriseRaw =
     json.sunEvents?.sunriseTime ?? json.sunriseTime;
   const sunsetRaw =
@@ -253,7 +379,7 @@ function normalize(json: GoogleWeatherResponse): WeatherSnapshot | null {
       wind.speed.unit ?? 'KILOMETERS_PER_HOUR',
     ),
     windDirectionDeg: wind.direction.degrees,
-    cloudCoverPct: clampPct(json.cloudCover ?? 0),
+    cloudCoverPct: clampPct(json.cloudCover),
     temperatureF: toFahrenheit(
       json.temperature?.degrees ?? 0,
       json.temperature?.unit ?? 'CELSIUS',
