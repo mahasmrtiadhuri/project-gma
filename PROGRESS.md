@@ -3089,3 +3089,34 @@ The PWA's previous service worker (built before the 2026-06-01 feels-like refact
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, CSS ~28.8 KB / gzip 6.5 KB, ~11 s)
+
+---
+
+## 2026-06-04 — TimePicker: native `<select>` on mobile
+
+Follow-up to the same-day mobile fix pass. The custom dropdown's backdrop close handler was still unreliable on iOS — taps near the route legend left the mode options stuck open, overlapping other UI. Switched to a viewport-conditional rendering: native `<select>` on mobile, custom dropdown on desktop.
+
+**Strategy** — [src/components/TimePicker.tsx](src/components/TimePicker.tsx)
+
+- New `useIsMobile()` hook (matchMedia on `(max-width: 639px)`, listens for resize) returns `true` below the Tailwind `sm` breakpoint.
+- Mobile path renders a new `MobileSelectPill` subcomponent:
+  - Visible pill matches the desktop chrome (clock icon + label + chevron) so the look is consistent.
+  - A transparent native `<select>` is stretched on top with `absolute inset-0 opacity-0`. Taps go through to the OS-native picker (iOS spinner wheel / Android dropdown).
+  - The OS owns dismiss — there is no synthetic backdrop, no document touchstart listener, no z-index race against the route legend. Whatever the user does next, the picker closes cleanly.
+  - `font-size: 16px` on the select prevents iOS Safari from auto-zooming the page when the picker opens.
+- Desktop path is the existing custom dropdown verbatim, gated on `!isMobile`. The backdrop + click-outside listener also only mount in desktop mode now.
+- When the user picks `'leave-at'` or `'arrive-by'` from the native select, a separate `.gma-card` panel with a native `datetime-local` input slides in directly below the pill. On desktop this input continues to render inside the dropdown.
+
+**Edge cases handled**
+
+- Viewport resize crossing 640 px: a `useEffect` on `isMobile` force-closes the desktop dropdown's `open` state so a leftover `open=true` from a previous resize doesn't briefly render a custom dropdown the mobile branch doesn't manage.
+- All existing behavior (`handleModeSelect` seeding a +30 min default planned time, `handleTimeInput` parsing the datetime-local value) is shared between mobile and desktop paths — no duplication, no behavior drift.
+
+**Files touched**
+
+- [src/components/TimePicker.tsx](src/components/TimePicker.tsx) — added `useIsMobile()`, `MobileSelectPill` subcomponent, viewport-conditional render, mobile time-input panel.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, CSS ~28.9 KB / gzip 6.5 KB, ~11 s)
