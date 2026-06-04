@@ -202,6 +202,13 @@ export interface RouteSheetProps {
    * 0 → "Calm" label across the wind filter.
    */
   windSpeedMph: number;
+  /**
+   * Embedded route-color legend rendered between the drag handle and
+   * the filter pills. Replaces the previous floating RouteLegend
+   * pill that overlapped the map. Null hides the strip.
+   */
+  legendMode?: 'sun' | 'wind' | 'rain';
+  legendSnow?: boolean;
 }
 
 /**
@@ -224,6 +231,8 @@ export function RouteSheet({
   precipitationProbability,
   precipitationType,
   windSpeedMph,
+  legendMode,
+  legendSnow = false,
 }: RouteSheetProps) {
   const canStart = !isLoading && routes.length > 0;
   const dayAccent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
@@ -279,7 +288,7 @@ export function RouteSheet({
       //
       // Desktop (sm and up): max-height-only so a longer routes list
       // doesn't force a fixed 55 % chrome.
-      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[min(55vh,55dvh)] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
+      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[min(52vh,52dvh)] max-h-[min(60vh,60dvh)] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
       style={{
         boxShadow: 'var(--gma-shadow-lg)',
         borderBottom: 'none',
@@ -300,6 +309,10 @@ export function RouteSheet({
         className="mx-auto my-2 h-1 w-10 shrink-0 rounded-full"
         style={{ background: 'var(--gma-border-strong)' }}
       />
+
+      {legendMode && (
+        <InlineRouteLegend mode={legendMode} snow={legendSnow} />
+      )}
 
       <div className="flex shrink-0 gap-1.5 overflow-x-auto px-4 pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none]">
         {visibleFilters.map((mode) => {
@@ -1105,6 +1118,112 @@ function PickRainIcon() {
       <path d="M12 2.5c-3.5 4.7-6 8.3-6 11.7 0 3.4 2.7 6.1 6 6.1s6-2.7 6-6.1c0-3.4-2.5-7-6-11.7z" />
     </svg>
   );
+}
+
+interface InlineRouteLegendProps {
+  mode: 'sun' | 'wind' | 'rain';
+  snow: boolean;
+}
+
+/**
+ * Embedded legend strip that lives inside the route sheet — replaces
+ * the previous floating RouteLegend pill which overlapped the map.
+ * Shape + gradient palette match the floating version verbatim so the
+ * color↔condition mapping reads the same.
+ */
+function InlineRouteLegend({ mode, snow }: InlineRouteLegendProps) {
+  const variant = pickLegendVariant(mode, snow);
+  return (
+    <div
+      className="mx-4 mb-2 flex shrink-0 items-center gap-2 rounded-full border px-3 py-1"
+      style={{
+        borderColor: 'var(--gma-border)',
+        background: 'var(--gma-input-bg)',
+      }}
+      aria-label={variant.ariaLabel}
+    >
+      <span
+        className="text-[10px] uppercase tracking-[0.16em]"
+        style={{
+          color: variant.leftColor,
+          fontFamily: 'var(--font-data)',
+        }}
+      >
+        {variant.leftLabel}
+      </span>
+      <span
+        className="block h-2 flex-1 rounded-full"
+        style={{ background: variant.gradient }}
+        aria-hidden="true"
+      />
+      <span
+        className="text-[10px] uppercase tracking-[0.16em]"
+        style={{
+          color: variant.rightColor,
+          fontFamily: 'var(--font-data)',
+        }}
+      >
+        {variant.rightLabel}
+      </span>
+    </div>
+  );
+}
+
+interface LegendVariant {
+  leftLabel: string;
+  rightLabel: string;
+  leftColor: string;
+  rightColor: string;
+  gradient: string;
+  ariaLabel: string;
+}
+
+function pickLegendVariant(
+  mode: 'sun' | 'wind' | 'rain',
+  snow: boolean,
+): LegendVariant {
+  if (mode === 'wind') {
+    return {
+      leftLabel: 'Sheltered',
+      rightLabel: 'Windy',
+      leftColor: 'rgb(16, 185, 129)',
+      rightColor: 'rgb(168, 85, 247)',
+      gradient:
+        'linear-gradient(to right, rgb(16, 185, 129), rgb(120, 130, 200), rgb(168, 85, 247))',
+      ariaLabel: 'Route wind-exposure legend',
+    };
+  }
+  if (mode === 'rain') {
+    if (snow) {
+      return {
+        leftLabel: 'Sheltered',
+        rightLabel: 'Snowy',
+        leftColor: 'rgb(99, 158, 235)',
+        rightColor: 'rgb(30, 58, 138)',
+        gradient:
+          'linear-gradient(to right, rgb(186, 230, 253), rgb(99, 158, 235), rgb(30, 58, 138))',
+        ariaLabel: 'Route snow-exposure legend',
+      };
+    }
+    return {
+      leftLabel: 'Sheltered',
+      rightLabel: 'Wet',
+      leftColor: 'rgb(6, 182, 212)',
+      rightColor: 'rgb(71, 85, 105)',
+      gradient:
+        'linear-gradient(to right, rgb(6, 182, 212), rgb(80, 130, 160), rgb(71, 85, 105))',
+      ariaLabel: 'Route rain-exposure legend',
+    };
+  }
+  return {
+    leftLabel: 'Shaded',
+    rightLabel: 'Sunny',
+    leftColor: 'rgb(40, 60, 140)',
+    rightColor: 'rgb(220, 130, 0)',
+    gradient:
+      'linear-gradient(to right, rgb(40, 60, 140), rgb(85, 130, 195), rgb(220, 175, 90), rgb(255, 160, 0))',
+    ariaLabel: 'Route sun-exposure legend',
+  };
 }
 
 function SkeletonRouteCard() {

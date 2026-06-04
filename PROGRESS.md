@@ -3157,3 +3157,49 @@ The previous attempt used `max-h-[min(80vh,80dvh)]` plus a `sticky bottom-0` Sta
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, CSS ~29.1 KB / gzip 6.5 KB, ~11 s)
+
+---
+
+## 2026-06-04 — Layout rebuild: clearly-defined non-overlapping zones
+
+Third Google-Maps mobile pass. The previous chrome still had hand-tuned `top-[Xrem]` offsets on each floating element, which meant any content change (a longer label, a wrapped pill row) could push an element down into the next one. This pass replaces the per-component offsets with a single flex column wrapper for the top stack and assigns every other floating element a dedicated zone that cannot collide with the others.
+
+### Layout zones
+
+| Zone | Owner | Mounted when | Position |
+|---|---|---|---|
+| **Top stack** (search → transport → time) | App.tsx wrapper | `!navigating` | `absolute left-2 right-[4.5rem] top-0 z-40` with `paddingTop: max(safe-area-inset-top, 16px)` and a 4.5 rem right gutter for the ThemeToggle. Children are flex-column with `gap-2`, centered, `max-w-[460px]`. |
+| **Theme toggle** | ThemeToggle | `!navigating` | top-right at `env+1rem`, 44 px, `z-55`. The 4.5 rem right gutter on the top stack guarantees no overlap. |
+| **Map** | GMACanvas | always | `absolute inset-0 z-0`, full screen behind everything. Opaque cards above just hide the corresponding map area visually. |
+| **Bottom sheet** | RouteSheet | `!navigating && sheetOpen` | `absolute bottom-0 z-30`, **fixed `min(52vh, 52dvh)` height** on mobile, capped at `min(60vh, 60dvh)`. Desktop: `h-auto` capped at `min(75vh, 75dvh)`. |
+| **Map view switcher** | MapViewSwitcher | always | `absolute right-4 z-40`, bottom computed dynamically — `env+2rem` baseline, `min(52vh,52dvh)+1rem` when sheet open (mobile), `env+6.5rem` during nav (clears the next-turn pill). |
+| **Sun compass** | SunCompass | `!navigating` | bottom-left, `max-sm:hidden` when sheet is open (already enforced). |
+| **Data attribution** | DataAttribution | `!navigating && !sheetOpen` | bottom-center, hidden whenever the sheet or nav chrome occupies that band — replaces always-mounted behavior that was visually buried under the sheet. |
+| **DateTime modal** | DateTimeModal (in TimePicker) | when user picks `leave-at`/`arrive-by` | `fixed left-1/2 top-1/2 z-71` over a `z-70` rgba backdrop — completely above every other layer. |
+| **Nav header** | NavigationHeader | `navigating` | top, full-width single card with destination + Stop button inside. |
+| **Next-turn pill** | NextTurnIndicator | `navigating` | bottom, `env+1rem`. |
+
+### Component changes
+
+- **[src/components/SearchBar.tsx](src/components/SearchBar.tsx)** — stripped `absolute left-1/2 top-[calc(env+1rem)] z-50 -translate-x-1/2` from the outer wrapper. The component is now a normal flex-row child that fills its parent's width.
+- **[src/components/TransportModeSwitcher.tsx](src/components/TransportModeSwitcher.tsx)** — same treatment. Now self-sizes inside the top stack.
+- **[src/components/TimePicker.tsx](src/components/TimePicker.tsx)** — outer wrapper stripped of absolute positioning. The custom desktop dropdown still uses `absolute` for its anchored position relative to the pill (unchanged). The `DateTimeModal` is `fixed` and lives at document root, untouched.
+- **[src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)**
+  - Height: `h-[min(52vh,52dvh)] max-h-[min(60vh,60dvh)]` on mobile, `sm:h-auto sm:max-h-[min(75vh,75dvh)]` on desktop. Replaces the prior 55 dvh fixed height.
+  - New `legendMode?` + `legendSnow?` props plus an embedded `InlineRouteLegend` subcomponent rendered between drag handle and filter pills. Palette + labels match the previous floating RouteLegend verbatim; the standalone floating version is no longer mounted.
+- **[src/components/MapViewSwitcher.tsx](src/components/MapViewSwitcher.tsx)** — new `navigating?` prop. Bottom position computed in TS: `env+6.5rem` (above next-turn pill in nav), `min(52vh,52dvh)+1rem` (above sheet on mobile), `env+2rem` (default).
+- **[src/components/DataAttribution.tsx](src/components/DataAttribution.tsx)** — new `visible` prop; returns null when false.
+- **[src/App.tsx](src/App.tsx)**
+  - Removed standalone `<SearchBar>`, `<TransportModeSwitcher>`, `<TimePicker>` mounts.
+  - Added a `TopStack` JSX block: `<div className="pointer-events-none absolute left-2 right-[4.5rem] top-0 z-40 flex flex-col items-center gap-2" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)' }}>` wrapping all three.
+  - Removed standalone `<RouteLegend>` mount + its import; passes `legendMode` + `legendSnow` to `<RouteSheet>`.
+  - Passes `navigating` to `<MapViewSwitcher>`; passes `visible={!navigating && !sheetOpen}` to `<DataAttribution>`.
+
+### Why this was necessary
+
+Each piece in the prior layout was positioned with an individual `top-[Xrem]` offset (`SearchBar` at 1 rem, transport at 11 rem, time picker at 15.5 rem, route legend at 19 rem). Any change to the search card's internal padding or to the transport row's icon size would push the next element into the previous one. Worse, on smaller phones (< 360 px viewport) the centered search card and the theme toggle were colliding because both were positioned independently. The flex-column wrapper fixes both: content changes push siblings down naturally, and the right-side 4.5 rem gutter guarantees clearance for the toggle.
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, CSS ~29.2 KB / gzip 6.6 KB, ~10 s)

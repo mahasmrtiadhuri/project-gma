@@ -39,7 +39,7 @@ export function SearchBar({
   onSwap,
 }: SearchBarProps) {
   return (
-    <div className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+1rem)] z-50 w-[min(460px,calc(100vw-4.5rem))] -translate-x-1/2">
+    <div className="pointer-events-auto w-full">
       <div
         className="gma-card relative flex flex-col rounded-2xl p-4"
         style={{

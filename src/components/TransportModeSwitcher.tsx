@@ -35,7 +35,7 @@ export function TransportModeSwitcher({
 
   return (
     <div
-      className="gma-card pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+11rem)] z-20 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-2xl p-1.5 [-ms-overflow-style:none] [scrollbar-width:none]"
+      className="gma-card pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl p-1.5 [-ms-overflow-style:none] [scrollbar-width:none]"
       role="radiogroup"
       aria-label="Transport mode"
     >

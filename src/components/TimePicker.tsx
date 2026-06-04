@@ -151,7 +151,7 @@ export function TimePicker({
 
       <div
         ref={wrapperRef}
-        className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+15.5rem)] z-20 w-[min(300px,calc(100vw-2rem))] -translate-x-1/2"
+        className="pointer-events-auto relative w-[min(300px,100%)]"
       >
         {isMobile ? (
           <MobileSelectPill

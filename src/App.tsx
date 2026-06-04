@@ -18,7 +18,6 @@ import { NextTurnIndicator } from './components/NextTurnIndicator';
 import { SunCompass } from './components/SunCompass';
 import { SunGlow } from './components/SunGlow';
 import { DataAttribution } from './components/DataAttribution';
-import { RouteLegend } from './components/RouteLegend';
 import { Toast } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme } from './hooks/useTheme';
@@ -970,34 +969,51 @@ export default function App() {
         dayColor={daylight.color}
       />
 
+      {/*
+        LAYER 1 — Top stack. SearchBar + TransportModeSwitcher + TimePicker
+        all share a single flex column container so they auto-stack with
+        consistent gaps. No `top-[Xrem]` hand-tuned offsets anywhere —
+        a longer search card or wrapped transport row simply pushes the
+        time picker down, no overlap risk. Right inset (4.5 rem) leaves
+        a permanent gutter for the ThemeToggle floating at top-right.
+      */}
       {!navigating && (
-        <SearchBar
-          origin={origin}
-          destination={destination}
-          onOriginChange={setOrigin}
-          onDestinationChange={setDestination}
-          onSwap={handleSwap}
-        />
-      )}
-
-      {!navigating && sheetOpen && (
-        <TransportModeSwitcher
-          value={travelMode}
-          onChange={setTravelMode}
-          dayColor={daylight.color}
-        />
-      )}
-
-      {!navigating && sheetOpen && (
-        <TimePicker
-          mode={timeMode}
-          plannedTime={plannedTime}
-          onChange={(nextMode, nextPlannedTime) => {
-            setTimeMode(nextMode);
-            setPlannedTime(nextPlannedTime);
+        <div
+          className="pointer-events-none absolute left-2 right-[4.5rem] top-0 z-40 flex flex-col items-center gap-2"
+          style={{
+            paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
           }}
-          dayColor={daylight.color}
-        />
+        >
+          <div className="w-full max-w-[460px]">
+            <SearchBar
+              origin={origin}
+              destination={destination}
+              onOriginChange={setOrigin}
+              onDestinationChange={setDestination}
+              onSwap={handleSwap}
+            />
+          </div>
+          {sheetOpen && (
+            <div className="max-w-[calc(100vw-5rem)]">
+              <TransportModeSwitcher
+                value={travelMode}
+                onChange={setTravelMode}
+                dayColor={daylight.color}
+              />
+            </div>
+          )}
+          {sheetOpen && (
+            <TimePicker
+              mode={timeMode}
+              plannedTime={plannedTime}
+              onChange={(nextMode, nextPlannedTime) => {
+                setTimeMode(nextMode);
+                setPlannedTime(nextPlannedTime);
+              }}
+              dayColor={daylight.color}
+            />
+          )}
+        </div>
       )}
 
       {!navigating && sheetOpen && (
@@ -1016,6 +1032,16 @@ export default function App() {
           precipitationProbability={weather?.precipitationProbability ?? 0}
           precipitationType={weather?.precipitationType ?? 'none'}
           windSpeedMph={weather?.windSpeedMph ?? 0}
+          legendMode={
+            coloredSegments && coloredSegments.length > 0
+              ? coloringMode === 'wind'
+                ? 'wind'
+                : coloringMode === 'rain'
+                  ? 'rain'
+                  : 'sun'
+              : undefined
+          }
+          legendSnow={weather?.precipitationType === 'snow'}
         />
       )}
 
@@ -1060,27 +1086,14 @@ export default function App() {
         value={mapView}
         onChange={setMapView}
         routeSheetOpen={sheetOpen && !navigating}
-      />
-
-      <RouteLegend
-        visible={
-          !navigating &&
-          coloredSegments != null &&
-          coloredSegments.length > 0
-        }
-        mode={
-          coloringMode === 'wind'
-            ? 'wind'
-            : coloringMode === 'rain'
-              ? 'rain'
-              : 'sun'
-        }
-        snow={weather?.precipitationType === 'snow'}
+        navigating={navigating}
       />
 
       <Toast message={toastMessage} />
 
-      <DataAttribution />
+      {/* Attribution sits at the very bottom — hidden whenever the
+       * sheet or navigation chrome occupies that band. */}
+      <DataAttribution visible={!navigating && !sheetOpen} />
     </div>
   );
 }
