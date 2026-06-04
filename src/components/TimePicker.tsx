@@ -18,13 +18,6 @@ const MODE_OPTIONS: ReadonlyArray<{ key: TimeMode; label: string }> = [
 
 const MOBILE_QUERY = '(max-width: 639px)';
 
-/**
- * Hook that tracks whether the viewport is mobile-sized (<640 px). We
- * use this to pick between the custom desktop dropdown and a native
- * <select> on mobile — native selects are the only reliably-dismissable
- * dropdown UI across mobile browsers (iOS Safari especially mishandles
- * synthetic backdrop close handlers).
- */
 function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -42,19 +35,22 @@ function useIsMobile(): boolean {
 }
 
 /**
- * Departure/arrival time picker — sits under the transport mode pills.
+ * Departure/arrival time picker.
  *
- * Desktop (≥640 px): clock-icon trigger pill opens a custom dropdown
- * with three modes plus a native datetime-local input when a
- * planned-time mode is active.
+ * Mode picker:
+ *   Mobile  → invisible native `<select>` overlaid on the pill chrome
+ *             so the OS picker handles open/close reliably.
+ *   Desktop → custom dropdown anchored under the pill.
  *
- * Mobile (<640 px): the same pill chrome is rendered, but an invisible
- * native <select> is overlaid on top so taps trigger the OS-native
- * picker (the iOS spinner wheel / Android dropdown). The datetime
- * input renders directly under the pill instead of inside a dropdown.
- * This sidesteps the iOS Safari quirk where the previous custom
- * dropdown's backdrop close handler was unreliable and the dropdown
- * options ended up stuck over the route legend.
+ * Date/time picker:
+ *   On BOTH platforms, picking 'Leave at' / 'Arrive by' opens a
+ *   centered modal containing a native `<input type="datetime-local">`.
+ *   The previous inline-panel slide-in is gone — it was overlapping the
+ *   route legend on mobile, and the modal pattern matches what users
+ *   expect from Google Maps / Apple Maps.
+ *
+ *   Tapping the pill label while a planned mode is active re-opens the
+ *   modal so the user can adjust the time without changing the mode.
  */
 export function TimePicker({
   mode,
@@ -64,13 +60,14 @@ export function TimePicker({
 }: TimePickerProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  const [dateModalOpen, setDateModalOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const accentRgb = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
 
-  // Force-close the desktop dropdown when the viewport flips to mobile
-  // (and vice-versa). Otherwise `open` could be true after a resize and
-  // briefly render a dropdown the mobile branch doesn't manage.
+  // Crossing the mobile breakpoint resets dropdown state so a leftover
+  // `open=true` from desktop doesn't render an orphan dropdown on
+  // mobile (mobile uses the native select overlay instead).
   useEffect(() => {
     if (isMobile) setOpen(false);
   }, [isMobile]);
@@ -93,13 +90,29 @@ export function TimePicker({
     };
   }, [open, isMobile]);
 
+  // Escape closes the date modal — matches desktop dialog convention.
+  useEffect(() => {
+    if (!dateModalOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDateModalOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [dateModalOpen]);
+
   const handleModeSelect = (nextMode: TimeMode) => {
+    // Always close the desktop dropdown first — keeps it from
+    // overlapping the modal it's about to spawn.
+    setOpen(false);
     if (nextMode === 'leave-now') {
       onChange(nextMode, null);
       return;
     }
     const seedTime = plannedTime ?? new Date(Date.now() + 30 * 60_000);
     onChange(nextMode, seedTime);
+    // Defer to next frame so the dropdown close animation completes
+    // before the modal pops in — avoids a 1-frame visual stack.
+    requestAnimationFrame(() => setDateModalOpen(true));
   };
 
   const handleTimeInput = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,15 +123,23 @@ export function TimePicker({
     onChange(mode, parsed);
   };
 
+  // Tapping the pill while a planned mode is active is the user's
+  // shortcut to re-edit the planned time without changing the mode.
+  // On mobile this is suppressed because the native <select> overlay
+  // owns the tap; the user re-edits by picking the same option again.
+  const handleTriggerClick = () => {
+    if (mode !== 'leave-now') {
+      setDateModalOpen(true);
+      return;
+    }
+    setOpen((v) => !v);
+  };
+
   const triggerLabel = formatTriggerLabel(mode, plannedTime);
-  const showTimeInput = mode === 'leave-at' || mode === 'arrive-by';
 
   return (
     <>
-      {/* Desktop-only backdrop. Mobile uses a native <select> which
-       * handles its own dismiss via the OS picker, so no backdrop is
-       * needed (and shouldn't be rendered — it would intercept taps
-       * meant for the map). */}
+      {/* Desktop-only click-outside backdrop for the mode dropdown. */}
       {open && !isMobile && (
         <button
           type="button"
@@ -127,6 +148,7 @@ export function TimePicker({
           className="pointer-events-auto fixed inset-0 z-[19] cursor-default bg-transparent"
         />
       )}
+
       <div
         ref={wrapperRef}
         className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+15.5rem)] z-20 w-[min(300px,calc(100vw-2rem))] -translate-x-1/2"
@@ -140,9 +162,9 @@ export function TimePicker({
         ) : (
           <button
             type="button"
-            onClick={() => setOpen((v) => !v)}
+            onClick={handleTriggerClick}
             className="gma-card gma-press flex h-11 w-full items-center justify-center gap-2 rounded-full px-4 text-sm text-[var(--gma-text-primary)]"
-            aria-haspopup="dialog"
+            aria-haspopup={mode === 'leave-now' ? 'listbox' : 'dialog'}
             aria-expanded={open}
           >
             <ClockIcon />
@@ -155,7 +177,7 @@ export function TimePicker({
           <div
             className="gma-card gma-pop-in absolute left-1/2 top-full z-40 mt-2 w-[min(320px,92vw)] -translate-x-1/2 rounded-xl p-2"
             style={{ boxShadow: 'var(--gma-shadow-lg)' }}
-            role="dialog"
+            role="listbox"
             aria-label="Choose departure or arrival time"
           >
             <div className="flex flex-col gap-1">
@@ -165,6 +187,8 @@ export function TimePicker({
                   <button
                     key={opt.key}
                     type="button"
+                    role="option"
+                    aria-selected={active}
                     onClick={() => handleModeSelect(opt.key)}
                     className="gma-press flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm"
                     style={
@@ -182,59 +206,19 @@ export function TimePicker({
                 );
               })}
             </div>
-
-            {showTimeInput && (
-              <div
-                className="mt-2 border-t pt-2"
-                style={{ borderColor: 'var(--gma-border)' }}
-              >
-                <input
-                  type="datetime-local"
-                  value={plannedTime ? dateToLocalString(plannedTime) : ''}
-                  onChange={handleTimeInput}
-                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                  style={{
-                    background: 'var(--gma-input-bg)',
-                    color: 'var(--gma-text-primary)',
-                    border: '1px solid var(--gma-input-border)',
-                    fontFamily: 'var(--font-data)',
-                  }}
-                  aria-label={
-                    mode === 'leave-at' ? 'Departure time' : 'Arrival time'
-                  }
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Mobile: when the user picks "Leave at" or "Arrive by" via the
-         * native select, the datetime input slides in under the pill so
-         * they can adjust the planned time. Tapping it opens the OS-native
-         * datetime picker — no custom dropdown UI involved. */}
-        {isMobile && showTimeInput && (
-          <div
-            className="gma-card gma-pop-in mt-2 rounded-xl p-2"
-            style={{ boxShadow: 'var(--gma-shadow-md)' }}
-          >
-            <input
-              type="datetime-local"
-              value={plannedTime ? dateToLocalString(plannedTime) : ''}
-              onChange={handleTimeInput}
-              className="h-11 w-full rounded-lg px-3 text-sm outline-none"
-              style={{
-                background: 'var(--gma-input-bg)',
-                color: 'var(--gma-text-primary)',
-                border: '1px solid var(--gma-input-border)',
-                fontFamily: 'var(--font-data)',
-              }}
-              aria-label={
-                mode === 'leave-at' ? 'Departure time' : 'Arrival time'
-              }
-            />
           </div>
         )}
       </div>
+
+      {dateModalOpen && (
+        <DateTimeModal
+          mode={mode === 'arrive-by' ? 'arrive-by' : 'leave-at'}
+          plannedTime={plannedTime}
+          onChange={handleTimeInput}
+          onClose={() => setDateModalOpen(false)}
+          accentRgb={accentRgb}
+        />
+      )}
     </>
   );
 }
@@ -245,12 +229,6 @@ interface MobileSelectPillProps {
   onModeSelect: (next: TimeMode) => void;
 }
 
-/**
- * Mobile pill: a visible "trigger" element that matches the desktop
- * design, with a transparent native <select> stretched on top to catch
- * the tap. The OS-native picker reads the <option> list directly, and
- * the OS owns dismiss, so the broken backdrop close path is gone.
- */
 function MobileSelectPill({
   mode,
   triggerLabel,
@@ -268,13 +246,10 @@ function MobileSelectPill({
       </div>
       <select
         value={mode}
-        onChange={(event) =>
-          onModeSelect(event.target.value as TimeMode)
-        }
-        // Stretched over the visible pill, fully transparent. Native
-        // picker fires on tap. `font-size: 16px` prevents iOS Safari
-        // from auto-zooming when the select gets focus.
+        onChange={(event) => onModeSelect(event.target.value as TimeMode)}
         className="absolute inset-0 h-full w-full cursor-pointer rounded-full opacity-0"
+        // 16 px prevents iOS Safari from auto-zooming the page when
+        // the native picker opens.
         style={{ fontSize: '16px' }}
         aria-label="Choose departure or arrival time"
       >
@@ -285,6 +260,95 @@ function MobileSelectPill({
         ))}
       </select>
     </div>
+  );
+}
+
+interface DateTimeModalProps {
+  mode: 'leave-at' | 'arrive-by';
+  plannedTime: Date | null;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onClose: () => void;
+  accentRgb: string;
+}
+
+/**
+ * Centered modal containing a native datetime-local input. Replaces
+ * the old inline panel that slid in below the pill (which overlapped
+ * the route legend on mobile and felt foreign next to the otherwise
+ * Google-Maps-style chrome). Backdrop closes on tap, ESC closes via
+ * the keydown listener in the parent.
+ */
+function DateTimeModal({
+  mode,
+  plannedTime,
+  onChange,
+  onClose,
+  accentRgb,
+}: DateTimeModalProps) {
+  const title = mode === 'leave-at' ? 'Leave at' : 'Arrive by';
+  return (
+    <>
+      <div
+        className="pointer-events-auto fixed inset-0 z-[70]"
+        style={{ background: 'rgba(0, 0, 0, 0.45)' }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Pick ${title} time`}
+        className="gma-card gma-pop-in pointer-events-auto fixed left-1/2 top-1/2 z-[71] w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-5"
+        style={{ boxShadow: 'var(--gma-shadow-lg)' }}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2
+            className="text-base font-medium text-[var(--gma-text-primary)]"
+            style={{ fontFamily: 'var(--font-data)' }}
+          >
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="gma-press flex h-9 w-9 items-center justify-center rounded-full text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)]"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <input
+          type="datetime-local"
+          value={plannedTime ? dateToLocalString(plannedTime) : ''}
+          onChange={onChange}
+          autoFocus
+          className="h-12 w-full rounded-lg px-3 text-base outline-none"
+          style={{
+            background: 'var(--gma-input-bg)',
+            color: 'var(--gma-text-primary)',
+            border: '1px solid var(--gma-input-border)',
+            fontFamily: 'var(--font-data)',
+            // Same 16 px floor — iOS would zoom on a sub-16 px input.
+            fontSize: '16px',
+          }}
+          aria-label={mode === 'leave-at' ? 'Departure time' : 'Arrival time'}
+        />
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="gma-press-soft mt-4 h-11 w-full rounded-xl text-sm font-medium uppercase tracking-wider"
+          style={{
+            background: accentRgb,
+            color: 'var(--gma-text-on-accent)',
+            boxShadow: 'var(--gma-glow-amber)',
+          }}
+        >
+          Done
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -357,6 +421,19 @@ function CheckIcon() {
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
       />
     </svg>
   );

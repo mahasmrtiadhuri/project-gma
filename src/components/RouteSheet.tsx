@@ -269,16 +269,20 @@ export function RouteSheet({
 
   return (
     <div
-      // Sheet height cap uses dvh on modern browsers and falls back to vh
-      // for older iOS Safari (≤15.3) where dvh resolves to 0 px — without
-      // the vh fallback the sheet would collapse and the Start button
-      // disappear off-screen. Bottom padding moved INTO the Start
-      // container so it sticks to the safe area.
-      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[80vh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:max-h-[75dvh]"
+      // Mobile: FIXED 55 % viewport height so the route cards + Start
+      // button fit without scrolling the sheet itself. The route list
+      // (`flex-1 overflow-y-auto` further down) scrolls inside, and
+      // the Start container (last shrink-0 child) is always the
+      // bottom-most visible band. The `min(55vh, 55dvh)` form picks
+      // the smaller of the two so older iOS Safari (≤15.3, dvh = 0)
+      // gets the vh fallback instead of a collapsed sheet.
+      //
+      // Desktop (sm and up): max-height-only so a longer routes list
+      // doesn't force a fixed 55 % chrome.
+      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[min(55vh,55dvh)] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
       style={{
         boxShadow: 'var(--gma-shadow-lg)',
         borderBottom: 'none',
-        maxHeight: 'min(80vh, 80dvh)',
       }}
       role="dialog"
       aria-label="Route options"
@@ -557,15 +561,14 @@ export function RouteSheet({
 
       {canStart && (
         <div
-          // Sticky to the sheet bottom so the Start button is ALWAYS
-          // visible regardless of how tall the routes list grows. The
-          // safe-area-inset-bottom padding here (rather than on the
-          // outer sheet) keeps the button clear of the iPhone home
-          // indicator without leaving an empty band when the inset
-          // is 0 px (Android, desktop, browser tabs without notch).
-          // Background matches the sheet surface so any scrolled
-          // route-list content underneath is obscured cleanly.
-          className="sticky bottom-0 z-10 shrink-0 px-3 pt-2"
+          // Last shrink-0 child of the flex-col sheet — with the
+          // routes list above it being flex-1 + overflow-y-auto, the
+          // Start container ALWAYS pins to the visible bottom of the
+          // sheet on every viewport size. No sticky/fixed required.
+          // safe-area-inset-bottom padding keeps it clear of the
+          // iPhone home indicator without leaving an empty band on
+          // hardware that has no inset.
+          className="shrink-0 px-3 pt-2"
           style={{
             background: 'var(--gma-surface)',
             paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',

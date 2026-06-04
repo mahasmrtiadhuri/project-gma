@@ -962,7 +962,7 @@ export default function App() {
         theme={theme}
       />
 
-      <ThemeToggle theme={theme} onToggle={toggleTheme} />
+      {!navigating && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
 
       <SunGlow
         sunAzimuthDeg={solar.azimuthDeg}

@@ -3120,3 +3120,40 @@ Follow-up to the same-day mobile fix pass. The custom dropdown's backdrop close 
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, CSS ~28.9 KB / gzip 6.5 KB, ~11 s)
+
+---
+
+## 2026-06-04 — Google-Maps-style mobile chrome
+
+Second pass on the same-day mobile fixes. Goal: the app should look and behave like Google Maps on a phone — fixed bottom sheet, Start button always visible, time picker uses native modals not inline panels, navigation header is a single full-width bar.
+
+| # | Fix | Files |
+|---|---|---|
+| 1 | **Start button always visible** — RouteSheet height switched from `min(80vh, 80dvh)` max-height to a FIXED `min(55vh, 55dvh)` on mobile (`sm:h-auto sm:max-h-[min(75vh,75dvh)]` on desktop). Routes list inside is `flex-1 overflow-y-auto` and Start is the last `shrink-0` child of the flex column, so Start now pins to the bottom natively. Dropped the `sticky bottom-0` workaround. | [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) |
+| 2 | **Time picker datetime modal** — Removed the inline panel that slid in below the pill (it was overlapping the route legend). Selecting `leave-at` / `arrive-by` from EITHER the mobile native select OR the desktop dropdown now opens a centered `DateTimeModal` containing a native `datetime-local` input + a Done button. Backdrop tap closes, Escape closes. `handleModeSelect` closes the desktop dropdown first then opens the modal on `requestAnimationFrame` so the two never visually stack. Tapping the pill while a planned mode is active also re-opens the modal — the user's shortcut to adjust time without changing mode. | [src/components/TimePicker.tsx](src/components/TimePicker.tsx) |
+| 3 | **Navigation header — Stop inside bar, no overlap** — Rewrote `NavigationHeader` to a single full-width `.gma-card` row containing destination + remaining distance/time on the left (truncates if long) and a red Stop pill on the right. Replaces the previous two-element layout (centered pill + separately-floated Stop button) that was overlapping the theme toggle on mobile. | [src/components/NavigationHeader.tsx](src/components/NavigationHeader.tsx) |
+| 4 | **Theme toggle hidden during navigation** — `<ThemeToggle>` mount in App.tsx is now gated on `!navigating` so it disappears entirely during nav, freeing the top-right corner for whatever the navigation chrome wants. | [src/App.tsx](src/App.tsx) |
+| 5 | **Overall layout matches Google Maps** — verified order: SearchBar (top), TransportModeSwitcher (below), TimePicker (below), map fills middle, RouteSheet slides up from bottom with drag handle, Start always visible at bottom of sheet. No new code — the offsets from the design-system pass already put these in the right places. |  |
+
+**Why the Start button kept "disappearing"**
+
+The previous attempt used `max-h-[min(80vh,80dvh)]` plus a `sticky bottom-0` Start container. That works when content overflows, but the user's report showed it still hiding — root cause was the sheet growing to ~80 % of the screen, the routes list expanding to fill it, and on a portrait phone with the iOS browser bar the sheet bottom was being pushed below the viewport. Forcing a smaller FIXED height (55 % mobile) caps the chrome at a band the user can always see, and Start lives as the last flex child below the `flex-1 overflow-y-auto` route list.
+
+**DateTimeModal details**
+
+- Mounted as siblings (backdrop + dialog) at the very top of the JSX tree so it's never clipped by parent transforms or z-index stacks.
+- Backdrop: `bg-rgba(0,0,0,0.45)` at z-70; dialog at z-71. ThemeToggle is z-55 so the modal correctly covers it.
+- `font-size: 16 px` on the datetime input prevents iOS Safari from auto-zooming when the OS picker opens.
+- Done button uses `.gma-press-soft` with the live `dayAccent` gradient + `--gma-glow-amber` glow ring, matching the Start button.
+- Escape key listener for desktop, backdrop tap for mobile.
+
+**NavigationHeader layout details**
+
+- Single `<div>` instead of fragment-of-two — left column is `flex-1 min-w-0` with `.truncate` on the destination label so long names don't push the Stop button off-screen.
+- Stop button is `bg-red-600` (`rgb(220, 38, 38)`) per the danger-action convention used elsewhere for stop/cancel.
+- `h-14` (56 px) tall — clearance for both content rows + the Stop button without crowding.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, CSS ~29.1 KB / gzip 6.5 KB, ~11 s)
