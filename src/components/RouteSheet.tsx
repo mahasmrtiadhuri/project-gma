@@ -269,10 +269,16 @@ export function RouteSheet({
 
   return (
     <div
-      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[60dvh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl pb-[max(env(safe-area-inset-bottom,0px),16px)] sm:max-h-[75dvh]"
+      // Sheet height cap uses dvh on modern browsers and falls back to vh
+      // for older iOS Safari (≤15.3) where dvh resolves to 0 px — without
+      // the vh fallback the sheet would collapse and the Start button
+      // disappear off-screen. Bottom padding moved INTO the Start
+      // container so it sticks to the safe area.
+      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[80vh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:max-h-[75dvh]"
       style={{
         boxShadow: 'var(--gma-shadow-lg)',
         borderBottom: 'none',
+        maxHeight: 'min(80vh, 80dvh)',
       }}
       role="dialog"
       aria-label="Route options"
@@ -550,7 +556,22 @@ export function RouteSheet({
       </div>
 
       {canStart && (
-        <div className="shrink-0 px-3 pb-1 pt-2">
+        <div
+          // Sticky to the sheet bottom so the Start button is ALWAYS
+          // visible regardless of how tall the routes list grows. The
+          // safe-area-inset-bottom padding here (rather than on the
+          // outer sheet) keeps the button clear of the iPhone home
+          // indicator without leaving an empty band when the inset
+          // is 0 px (Android, desktop, browser tabs without notch).
+          // Background matches the sheet surface so any scrolled
+          // route-list content underneath is obscured cleanly.
+          className="sticky bottom-0 z-10 shrink-0 px-3 pt-2"
+          style={{
+            background: 'var(--gma-surface)',
+            paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
+            borderTop: '1px solid var(--gma-border)',
+          }}
+        >
           <button
             type="button"
             onClick={onStartNavigation}

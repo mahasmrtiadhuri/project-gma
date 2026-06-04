@@ -81,7 +81,7 @@ export function SearchBar({
           onClick={onSwap}
           disabled={!origin || !destination}
           aria-label="Swap origin and destination"
-          className="gma-swap-button gma-press absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-2 text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)] disabled:opacity-30"
+          className="gma-swap-button gma-press absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)] disabled:opacity-30"
         >
           <SwapIcon />
         </button>
@@ -98,7 +98,7 @@ function SearchRow({
   field: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 pr-12">
+    <div className="flex items-center gap-3 pr-14">
       <div className="flex h-4 w-4 shrink-0 items-center justify-center">
         {icon}
       </div>
@@ -343,7 +343,13 @@ function PlaceField({
         role="combobox"
         autoComplete="off"
         spellCheck={false}
-        className="w-full rounded-lg px-3.5 py-3 text-base outline-none placeholder:text-[var(--gma-text-muted)]"
+        className={
+          'w-full rounded-lg px-3.5 py-3 text-base outline-none placeholder:text-[var(--gma-text-muted)]' +
+          // Reserve space for the 44 px clear button on fields that can
+          // surface one (destination only) so long labels don't slide
+          // under the X icon.
+          (onClear ? ' pr-12' : '')
+        }
         style={{
           background: 'var(--gma-input-bg)',
           color: 'var(--gma-text-primary)',
@@ -357,7 +363,7 @@ function PlaceField({
           type="button"
           onClick={handleClear}
           aria-label="Clear"
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--gma-text-muted)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)]"
+          className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-[var(--gma-text-muted)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)]"
         >
           <CloseIcon />
         </button>
@@ -387,7 +393,7 @@ function PlaceField({
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setHighlightedIdx(i)}
                 onClick={() => void handleSelect(s)}
-                className="block w-full border-t px-4 py-2.5 text-left transition-colors first:border-t-0"
+                className="block min-h-[44px] w-full border-t px-4 py-2.5 text-left transition-colors first:border-t-0"
                 style={{
                   borderColor: 'var(--gma-border)',
                   background: isHighlighted

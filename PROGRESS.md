@@ -3059,3 +3059,33 @@ Every component reads these tokens, so the entire color/elevation system flips t
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, CSS ~28 KB / gzip 6.4 KB, ~14 s)
+
+---
+
+## 2026-06-04 — Critical mobile fixes
+
+Five-item pass on issues surfaced from real-device testing on the deployed Netlify build.
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | TimePicker dropdown stuck open on mobile, blocking the rest of the UI | Click-outside handler in [src/components/TimePicker.tsx](src/components/TimePicker.tsx) now listens for BOTH `mousedown` AND `touchstart` (iOS Safari can swallow/delay mousedown). Added a full-viewport `<button>` backdrop (z-19, transparent) rendered when `open === true`; tapping anywhere off the dropdown closes it via the backdrop's own onClick — a reliable mobile fallback even if the document touchstart listener misses. |
+| 2 | Cards show "71% COOLER" instead of "~8°F cooler" on deployed build | Verified the code in [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) already returns the feels-like text via `comfortBadgeFor` (no code drift). Root cause was the previous PWA service worker holding the user on the old bundle. Added `workbox: { skipWaiting: true, clientsClaim: true, cleanupOutdatedCaches: true }` to [vite.config.ts](vite.config.ts) so new SW takes over immediately on next page load and stale Workbox precache entries are dropped. Future deploys won't strand users on prior builds. |
+| 3 | GMA PICK explanation still shows percent on deployed build | Same root cause — `buildGmaExplanation` already returns `${time} · ${delta.shortPhrase}` with `shortPhrase: 'Feels ~${degrees}°F ${direction}'`. Same SW-refresh fix unsticks it. |
+| 4 | Touch targets < 44 px | Audited all interactive surfaces. Fixed in [src/components/SearchBar.tsx](src/components/SearchBar.tsx): swap button bumped from `p-2` (~34 px) → `h-11 w-11` (44 px); place-field clear button from `p-1` (~22 px) → `h-11 w-11`; autocomplete suggestion rows now `min-h-[44px]`. Search row right-padding bumped `pr-12 → pr-14` to clear the wider swap button. Input gains conditional `pr-12` only on fields that surface a clear button so long labels don't slide under the X. RouteSheet, TimePicker, MapViewSwitcher, TransportModeSwitcher already complied with 44 px. |
+| 5 | Start button hidden below the viewport on mobile | [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) — Start container is now `sticky bottom-0` with its own `paddingBottom: max(env(safe-area-inset-bottom, 0px), 16px)` (moved off the outer sheet) + a `var(--gma-surface)` background + top border so scrolled route content underneath is obscured cleanly. Sheet max-height switched from pure `60dvh` to `min(80vh, 80dvh)` — older iOS Safari (≤15.3) resolves `dvh` to 0 px which would collapse the sheet entirely; the `vh` fallback prevents that. |
+
+**Why issues 2 & 3 looked like code bugs**
+
+The PWA's previous service worker (built before the 2026-06-01 feels-like refactor) was still serving the old JS chunk to anyone who'd installed the app or visited before that deploy. `vite-plugin-pwa` default config registers in `autoUpdate` mode but waits for all tabs to close before activating a new SW. Adding `skipWaiting + clientsClaim + cleanupOutdatedCaches` to the workbox config forces the new worker to take over on the very next navigation and purges old Workbox caches, so the build verified locally is also what runs on the device.
+
+**Files touched**
+
+- [vite.config.ts](vite.config.ts) — `workbox` block added to `VitePWA` config.
+- [src/components/TimePicker.tsx](src/components/TimePicker.tsx) — `touchstart` listener + viewport backdrop button.
+- [src/components/SearchBar.tsx](src/components/SearchBar.tsx) — 44 px swap + clear buttons, `min-h-[44px]` autocomplete rows, conditional `pr-12` on clearable inputs, `pr-14` row gutter.
+- [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) — sticky Start container with own safe-area padding + surface background + border, `min(80vh, 80dvh)` max-height with vh fallback.
+
+**Build**
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, CSS ~28.8 KB / gzip 6.5 KB, ~11 s)

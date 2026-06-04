@@ -36,7 +36,7 @@ export function TimePicker({
 
   useEffect(() => {
     if (!open) return;
-    const handleClick = (event: MouseEvent) => {
+    const handleDismiss = (event: Event) => {
       if (
         wrapperRef.current &&
         !wrapperRef.current.contains(event.target as Node)
@@ -44,8 +44,16 @@ export function TimePicker({
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    // Both pointer events: mousedown for desktop trackpad/mouse,
+    // touchstart for mobile Safari/Chrome where mousedown can be
+    // delayed or swallowed by the 300 ms click delay heuristic and
+    // leave the dropdown stuck open over the rest of the UI.
+    document.addEventListener('mousedown', handleDismiss);
+    document.addEventListener('touchstart', handleDismiss, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleDismiss);
+      document.removeEventListener('touchstart', handleDismiss);
+    };
   }, [open]);
 
   const handleModeSelect = (nextMode: TimeMode) => {
@@ -69,6 +77,21 @@ export function TimePicker({
   const showTimeInput = mode === 'leave-at' || mode === 'arrive-by';
 
   return (
+    <>
+      {/* Full-viewport backdrop sits BELOW the wrapper (z-19 vs z-20) and
+       * catches any tap that misses the dropdown — a critical mobile
+       * fallback because some iOS Safari versions fail to dispatch the
+       * mousedown that the document listener relies on. Tapping the
+       * backdrop closes the dropdown immediately. Inert when closed
+       * so it never blocks the map. */}
+      {open && (
+        <button
+          type="button"
+          aria-label="Close time picker"
+          onClick={() => setOpen(false)}
+          className="pointer-events-auto fixed inset-0 z-[19] cursor-default bg-transparent"
+        />
+      )}
     <div
       ref={wrapperRef}
       className="pointer-events-auto absolute left-1/2 top-[calc(env(safe-area-inset-top,0px)+15.5rem)] z-20 w-[min(300px,calc(100vw-2rem))] -translate-x-1/2"
@@ -142,6 +165,7 @@ export function TimePicker({
         </div>
       )}
     </div>
+    </>
   );
 }
 
