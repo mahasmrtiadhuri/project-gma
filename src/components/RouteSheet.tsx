@@ -177,7 +177,6 @@ export interface RouteSheetProps {
   filterMode: FilterMode;
   onFilterChange: (mode: FilterMode) => void;
   onDismiss: () => void;
-  onStartNavigation: () => void;
   isLoading: boolean;
   /** Live time-of-day color used for sun-accent filter pills + Start button. */
   dayColor: RGB;
@@ -223,7 +222,6 @@ export function RouteSheet({
   filterMode,
   onFilterChange,
   onDismiss,
-  onStartNavigation,
   isLoading,
   dayColor,
   onSubmitPreference,
@@ -234,7 +232,6 @@ export function RouteSheet({
   legendMode,
   legendSnow = false,
 }: RouteSheetProps) {
-  const canStart = !isLoading && routes.length > 0;
   const dayAccent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   const sunDirection = filterToSunDirection(filterMode);
   const isSunFilter =
@@ -288,7 +285,7 @@ export function RouteSheet({
       //
       // Desktop (sm and up): max-height-only so a longer routes list
       // doesn't force a fixed 55 % chrome.
-      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[min(52vh,52dvh)] max-h-[min(60vh,60dvh)] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
+      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[min(55vh,400px)] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
       style={{
         boxShadow: 'var(--gma-shadow-lg)',
         borderBottom: 'none',
@@ -394,7 +391,13 @@ export function RouteSheet({
         </button>
       </form>
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className="flex-1 overflow-y-auto"
+        // Bottom padding clears the fixed Start button (≈ 88 px tall +
+        // 16 px safe-area inset) so the last route card can be
+        // scrolled fully into view above the floating button.
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)' }}
+      >
         {allMostlySunny && (
           <div
             className="mx-3 mb-2 flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
@@ -572,39 +575,12 @@ export function RouteSheet({
         </div>
       </div>
 
-      {canStart && (
-        <div
-          // Last shrink-0 child of the flex-col sheet — with the
-          // routes list above it being flex-1 + overflow-y-auto, the
-          // Start container ALWAYS pins to the visible bottom of the
-          // sheet on every viewport size. No sticky/fixed required.
-          // safe-area-inset-bottom padding keeps it clear of the
-          // iPhone home indicator without leaving an empty band on
-          // hardware that has no inset.
-          className="shrink-0 px-3 pt-2"
-          style={{
-            background: 'var(--gma-surface)',
-            paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-            borderTop: '1px solid var(--gma-border)',
-          }}
-        >
-          <button
-            type="button"
-            onClick={onStartNavigation}
-            className="gma-press-soft flex h-14 w-full items-center justify-center gap-2 rounded-xl text-base font-medium uppercase tracking-wider"
-            style={{
-              backgroundImage: `linear-gradient(135deg, ${dayAccent} 0%, color-mix(in srgb, ${dayAccent} 80%, #b45309) 100%)`,
-              backgroundColor: dayAccent,
-              color: 'var(--gma-text-on-accent)',
-              boxShadow:
-                'var(--gma-shadow-md), var(--gma-glow-amber)',
-            }}
-          >
-            <NavIcon />
-            Start
-          </button>
-        </div>
-      )}
+      {/* Start button used to live here. Lifted to a fixed-position
+       * <StartButton> in App.tsx (z-100) so it stays visible at the
+       * bottom of the viewport regardless of sheet height / phone size.
+       * The scrollable routes list above gets extra bottom padding so
+       * the last card can be scrolled into view above the floating
+       * Start button — see `pb-[96px]` on the overflow container. */}
     </div>
   );
 }
@@ -795,14 +771,6 @@ function CloseIcon() {
         strokeWidth="2.5"
         strokeLinecap="round"
       />
-    </svg>
-  );
-}
-
-function NavIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z" />
     </svg>
   );
 }

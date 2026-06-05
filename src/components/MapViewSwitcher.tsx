@@ -44,9 +44,9 @@ export function MapViewSwitcher({
     // above the safe-area inset.
     bottomStyle = 'calc(env(safe-area-inset-bottom, 0px) + 6.5rem)';
   } else if (routeSheetOpen) {
-    // Above the 52 dvh sheet, plus 16 px gap. The vh fallback covers
-    // older iOS Safari where dvh resolves to 0 px.
-    bottomStyle = 'calc(min(52vh, 52dvh) + 1rem)';
+    // Above the route sheet (min(55vh, 400px) — same formula as the
+    // sheet itself), plus a 1 rem gap.
+    bottomStyle = 'calc(min(55vh, 400px) + 1rem)';
   } else {
     bottomStyle = 'calc(env(safe-area-inset-bottom, 0px) + 2rem)';
   }

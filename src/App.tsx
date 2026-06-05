@@ -20,6 +20,8 @@ import { SunGlow } from './components/SunGlow';
 import { DataAttribution } from './components/DataAttribution';
 import { Toast } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
+import { StartButton } from './components/StartButton';
+import { ColorLegendButton } from './components/ColorLegendButton';
 import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
 import { useWeatherData } from './hooks/useWeatherData';
@@ -295,35 +297,45 @@ export default function App() {
   //      around viewState center, which was too small for landscape
   //      viewports and made the street-sun overlay appear in only a
   //      tiny box around the map center.
-  const overpassBbox = useMemo<Bbox>(() => {
-    if (candidates.length > 0) {
-      let south = Infinity;
-      let west = Infinity;
-      let north = -Infinity;
-      let east = -Infinity;
-      for (const c of candidates) {
-        for (const p of c.polyline) {
-          if (p.lat < south) south = p.lat;
-          if (p.lat > north) north = p.lat;
-          if (p.lng < west) west = p.lng;
-          if (p.lng > east) east = p.lng;
-        }
-      }
-      if (Number.isFinite(north)) {
-        const padLat = 500 / 111_000; //  ~0.0045°  (500 m N–S)
-        const padLng = 500 / 84_500; //   ~0.0059°  (500 m E–W at NYC latitude)
-        return {
-          south: south - padLat,
-          west: west - padLng,
-          north: north + padLat,
-          east: east + padLng,
-        };
+  // Bbox derivation is split into two independent memos so the
+  // candidates-regime bbox stays referentially stable when the user
+  // pans/zooms the map. Previously a single memo depended on both
+  // `candidates` AND `viewState`, so any viewport change recomputed
+  // the bbox object even though the candidates-derived numbers were
+  // identical — and although `useOverpassData` keyed off the bbox
+  // primitives (so no refetch), downstream `useMemo`s reading
+  // `overpassBbox` saw a new reference every pan, which cascaded
+  // into rerun-cost spikes during typing/filter/time edits.
+  //
+  // Two-memo split keeps the candidates phase 100 % stable on
+  // `candidates` only; the viewport phase only matters when there
+  // are no candidates yet.
+  const candidatesBbox = useMemo<Bbox | null>(() => {
+    if (candidates.length === 0) return null;
+    let south = Infinity;
+    let west = Infinity;
+    let north = -Infinity;
+    let east = -Infinity;
+    for (const c of candidates) {
+      for (const p of c.polyline) {
+        if (p.lat < south) south = p.lat;
+        if (p.lat > north) north = p.lat;
+        if (p.lng < west) west = p.lng;
+        if (p.lng > east) east = p.lng;
       }
     }
+    if (!Number.isFinite(north)) return null;
+    const padLat = 500 / 111_000; //  ~0.0045°  (500 m N–S)
+    const padLng = 500 / 84_500; //   ~0.0059°  (500 m E–W at NYC latitude)
+    return {
+      south: south - padLat,
+      west: west - padLng,
+      north: north + padLat,
+      east: east + padLng,
+    };
+  }, [candidates]);
 
-    // No candidates yet — derive bbox from the live viewport so the
-    // street overlay covers the full visible map.
-    //
+  const viewportBbox = useMemo<Bbox>(() => {
     // Web Mercator meters-per-pixel at this zoom + latitude:
     //   m/px = EARTH_CIRC × cos(lat) / (TILE_SIZE × 2^zoom)
     // Then half-extents = (canvas pixels / 2) × m/px → meters → degrees.
@@ -333,10 +345,8 @@ export default function App() {
       (TILE_SIZE_PX * Math.pow(2, viewState.zoom));
     const halfWidthM = (windowSize.w / 2) * metersPerPixel + OVERPASS_VIEWPORT_PAD_M;
     const halfHeightM = (windowSize.h / 2) * metersPerPixel + OVERPASS_VIEWPORT_PAD_M;
-    const halfLngDegRaw = halfWidthM / 84_500; //   m/° at NYC latitude
+    const halfLngDegRaw = halfWidthM / 84_500;
     const halfLatDegRaw = halfHeightM / 111_000;
-    // Cap per-side extent so a low-zoom view doesn't drop a huge
-    // Overpass query (and trigger 429 / timeout).
     const halfLngDeg = Math.min(OVERPASS_MAX_HALF_DEG, halfLngDegRaw);
     const halfLatDeg = Math.min(OVERPASS_MAX_HALF_DEG, halfLatDegRaw);
     // 3-decimal-rounded center so small pans share a bboxKey and skip
@@ -350,13 +360,14 @@ export default function App() {
       east: lng + halfLngDeg,
     };
   }, [
-    candidates,
     viewState.latitude,
     viewState.longitude,
     viewState.zoom,
     windowSize.w,
     windowSize.h,
   ]);
+
+  const overpassBbox: Bbox = candidatesBbox ?? viewportBbox;
 
   // Lazy-load Overpass: don't fetch anything until the user has picked
   // a destination. The no-destination map load stays close to zero
@@ -1024,7 +1035,6 @@ export default function App() {
           filterMode={filterMode}
           onFilterChange={handleFilterChange}
           onDismiss={() => setDestination(null)}
-          onStartNavigation={handleStartNavigation}
           isLoading={routesLoading}
           dayColor={daylight.color}
           onSubmitPreference={handleSubmitPreference}
@@ -1087,6 +1097,32 @@ export default function App() {
         onChange={setMapView}
         routeSheetOpen={sheetOpen && !navigating}
         navigating={navigating}
+      />
+
+      {/* Floating Start button — fixed at viewport bottom, z-100, always
+       * visible when there's at least one routable candidate. Lives
+       * outside the RouteSheet so a tight sheet height on small phones
+       * can never clip it off-screen. */}
+      <StartButton
+        visible={
+          !navigating &&
+          sheetOpen &&
+          !routesLoading &&
+          (result?.routes.length ?? 0) > 0
+        }
+        dayColor={daylight.color}
+        onStart={handleStartNavigation}
+      />
+
+      {/* "?" tooltip explaining route polyline colors — visible only
+       * when a colored route is actually on the map. */}
+      <ColorLegendButton
+        visible={
+          !navigating &&
+          sheetOpen &&
+          coloredSegments != null &&
+          coloredSegments.length > 0
+        }
       />
 
       <Toast message={toastMessage} />

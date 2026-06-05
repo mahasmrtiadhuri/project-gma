@@ -3203,3 +3203,58 @@ Each piece in the prior layout was positioned with an individual `top-[Xrem]` of
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, CSS ~29.2 KB / gzip 6.6 KB, ~10 s)
+
+---
+
+## 2026-06-04 — Small-phone Start button + perf-stability + route color legend
+
+Three-part pass.
+
+### 1. Start button — completely outside the sheet, always visible
+
+The previous attempt baked Start into RouteSheet as the last flex-col child. On small phones (where the sheet's `min(52vh, 52dvh)` was tight) the button still ended up hidden because the route cards + filter pills + form took the full sheet height before Start got rendering room.
+
+Lifted Start into a new component:
+
+- New [src/components/StartButton.tsx](src/components/StartButton.tsx) — `position: fixed; left: 16px; right: 16px; bottom: max(env(safe-area-inset-bottom, 0px), 16px); z-index: 100`. Full amber gradient pill with `.gma-press-soft` and the existing dark-mode glow ring. Visible whenever `!navigating && sheetOpen && !routesLoading && routes.length > 0`.
+- [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) lost its Start container; `onStartNavigation` prop removed; the routes-list `<div>` gained `paddingBottom: calc(env(safe-area-inset-bottom, 0px) + 96px)` so the last card can be scrolled into view above the floating Start button.
+- Sheet height switched from `min(52vh, 52dvh) max-h-[min(60vh, 60dvh)]` to `min(55vh, 400px)` per the spec — caps at 400 px on tall screens so the sheet never grows past comfortable thumb reach.
+- [src/components/MapViewSwitcher.tsx](src/components/MapViewSwitcher.tsx) sheet-open bottom offset updated to `calc(min(55vh, 400px) + 1rem)` so it tracks the new sheet height.
+- [src/App.tsx](src/App.tsx) imports + mounts `<StartButton>`.
+
+### 2. Perf — Overpass / Solar refire stability
+
+`overpassBbox` was a single `useMemo` that depended on both `candidates` AND `viewState.{lat,lng,zoom}` / `windowSize.{w,h}`. During the candidates regime the bbox values were independent of viewport, but the memo recomputed (and returned a new object reference) on every pan/zoom — which downstream memos read from, cascading rerun-cost into typing/filter/time edits.
+
+Split into two independent memos:
+
+- `candidatesBbox`: deps `[candidates]` only. Returns `null` when no candidates.
+- `viewportBbox`: deps on viewState + windowSize only. Returns the live-viewport bbox.
+- `overpassBbox` is `candidatesBbox ?? viewportBbox` — a one-line ternary, no useMemo needed. During the candidates phase the bbox is reference-stable across any number of viewport changes, so the Overpass effect deps don't see new primitives and downstream memos that key off `overpassBbox` reference don't re-fire either.
+
+For Solar API: `candidatePolylines` is already memoized on `[candidates]` and `useSolarAPI` keys its effect off a content-hash string of the polylines. Verified — no change needed; the hook only refires when candidates content changes, not on filter/time/viewState.
+
+### 3. Route color legend button
+
+New [src/components/ColorLegendButton.tsx](src/components/ColorLegendButton.tsx):
+
+- Small circular "?" button bottom-left at `bottom: calc(min(55vh, 400px) + 1rem); left: 16px` — sits just above the sheet on every screen size.
+- Tap opens a `.gma-card` tooltip with the four route colors:
+  - 🟠 Orange — Direct sunlight
+  - 🔵 Blue — Building shade
+  - 🟢 Green — Tree canopy
+  - 🔴 Red — Glass glare (+15°F)
+- Backdrop tap closes (z-44 transparent button + z-46 dialog).
+- Visible only when `!navigating && sheetOpen && coloredSegments.length > 0` — i.e., when a colored route is actually on the map.
+
+### Files touched
+
+- New: [src/components/StartButton.tsx](src/components/StartButton.tsx), [src/components/ColorLegendButton.tsx](src/components/ColorLegendButton.tsx).
+- [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) — `onStartNavigation` prop removed; Start container deleted; sheet height + scrollable bottom padding adjusted; unused `NavIcon` removed.
+- [src/components/MapViewSwitcher.tsx](src/components/MapViewSwitcher.tsx) — sheet-open offset matches new sheet height.
+- [src/App.tsx](src/App.tsx) — split `overpassBbox` into two memos; imports + mounts `<StartButton>` and `<ColorLegendButton>`; dropped `onStartNavigation` prop on `<RouteSheet>`.
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, CSS ~29.7 KB / gzip 6.8 KB, ~10 s)
