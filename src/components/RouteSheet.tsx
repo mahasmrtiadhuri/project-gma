@@ -393,13 +393,11 @@ export function RouteSheet({
 
       <div
         className="flex-1 overflow-y-auto"
-        // 80 px bottom padding gives the last route card room to
-        // scroll up above the Start strip. The Start strip itself
-        // (80 px tall) sits at `bottom: 56 px` so it occupies
-        // viewport pixels 56–136 from the bottom. Cards behind the
-        // strip get cleanly cropped by the strip's opaque
-        // `var(--gma-surface)` background — see StartButton.tsx.
-        style={{ paddingBottom: '80px' }}
+        // 120 px bottom padding so the trailing "More options"
+        // disclosure can scroll fully clear of the Start strip.
+        // Strip occupies viewport pixels 56–136 from the bottom; 120 px
+        // padding gives the disclosure a 64 px landing zone above it.
+        style={{ paddingBottom: '120px' }}
       >
         {allMostlySunny && (
           <div

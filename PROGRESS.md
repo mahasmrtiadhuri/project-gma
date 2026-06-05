@@ -3313,3 +3313,47 @@ User reported route cards scrolling visibly behind the Start button band. The St
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, ~13 s)
+
+---
+
+## 2026-06-04 — More-options clearance + navigation map markers
+
+Two fixes.
+
+### 1. MORE OPTIONS clears the Start strip
+
+[src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) — scrollable routes-list `paddingBottom` bumped from 80 → 120 px. The Start strip occupies viewport pixels 56–136 from the bottom, so a 120 px padding leaves a 64 px landing zone above it where the "More options" disclosure can scroll fully into view.
+
+### 2. Navigation map markers
+
+[src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) — added three new icon layers gated on `navigating === true`:
+
+- **Heading chevron** — a blue triangle (rgba(66,133,244,0.92), white stroke) rendered BENEATH the live-location dot. `IconLayer` with `getAngle: -headingDeg` (deck.gl rotates counterclockwise; compass heading is clockwise from N, so we negate). Visible only when `liveLocation.headingDeg != null` (i.e., the geolocation watch is reporting a real compass heading). Falls back gracefully to the bare blue dot when heading is absent.
+- **Green origin pin** — circular green map-pin SVG with white center, anchored at the route's origin point (`origin.point`). Anchor at the bottom tip (anchorY: 38) so the geo coord is exactly under the pin's point.
+- **Red destination pin** — same shape, red fill, anchored at `destination.point`.
+
+Both pins stay visible throughout navigation regardless of how far the follow-cam pans from either endpoint.
+
+**Implementation details**
+
+- Three inline SVGs encoded as base64 data URLs at module scope (browser caches them after first paint).
+- All three layers use `getSize: 38–40 px` (pixel-sized, so they don't shrink at low zoom).
+- All `parameters: { depthCompare: 'always', depthWriteEnabled: false }` so they read on top of the basemap/overlays.
+- Layer order: pins → halo → chevron → dot. The dot sits on top of the chevron for a clean Google-Maps "blue dot with direction fan" look.
+
+**Component API**
+
+- `GMACanvasProps.liveLocation` gained optional `headingDeg?: number | null`.
+- `GMACanvasProps` gained optional `originPoint?: {lat,lng} | null` and `destinationPoint?: {lat,lng} | null`.
+- [src/App.tsx](src/App.tsx) passes `liveLocation.heading` as `headingDeg`, and `origin?.point` / `destination?.point` only when `navigating` is true (kept null otherwise so non-nav state doesn't paint pins).
+
+### Files touched
+
+- [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)
+- [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) — `IconLayer` import added; three SVG constants + ICON objects at module scope; new IconLayer blocks for chevron + origin + destination; memo deps include the new props.
+- [src/App.tsx](src/App.tsx) — wires `headingDeg`, `originPoint`, `destinationPoint` into `<GMACanvas>`.
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.45 MB main chunk, ~21 s)

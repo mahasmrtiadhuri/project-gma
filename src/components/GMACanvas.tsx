@@ -3,6 +3,7 @@ import DeckGL from '@deck.gl/react';
 import type { PickingInfo } from '@deck.gl/core';
 import {
   BitmapLayer,
+  IconLayer,
   PathLayer,
   PolygonLayer,
   ScatterplotLayer,
@@ -62,6 +63,64 @@ const SHADOW_FILL: Color = [100, 100, 120, 20];
 // glare segments remain visible on top.
 const GLARE_HOTSPOT_FILL: Color = [255, 107, 53, 128]; // #FF6B35 @ 0.5
 
+// ---- Navigation marker icons (inline SVG → data URL) -------------------
+// Three icons rendered via deck.gl IconLayer during navigation mode:
+//   - HEADING_CHEVRON: blue triangle sitting under the live-location dot,
+//     rotated to the compass heading so the user can read which way they
+//     are facing at a glance.
+//   - ORIGIN_PIN_SVG / DEST_PIN_SVG: green and red map-pins anchored at
+//     the route's origin and destination points respectively, visible
+//     for the entire navigation session.
+// All three are encoded as base64 data URLs at module scope so the
+// browser caches them after the first IconLayer paint.
+const HEADING_CHEVRON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+  '<path d="M16 4 L26 28 L16 22 L6 28 Z" fill="rgba(66,133,244,0.92)" stroke="white" stroke-width="2" stroke-linejoin="round"/>' +
+  '</svg>';
+
+const ORIGIN_PIN_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40">' +
+  '<path d="M16 2 C8 2 2 8 2 16 C2 24 16 38 16 38 C16 38 30 24 30 16 C30 8 24 2 16 2 Z" fill="rgb(16,185,129)" stroke="white" stroke-width="2"/>' +
+  '<circle cx="16" cy="16" r="5" fill="white"/>' +
+  '</svg>';
+
+const DEST_PIN_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40">' +
+  '<path d="M16 2 C8 2 2 8 2 16 C2 24 16 38 16 38 C16 38 30 24 30 16 C30 8 24 2 16 2 Z" fill="rgb(220,38,38)" stroke="white" stroke-width="2"/>' +
+  '<circle cx="16" cy="16" r="5" fill="white"/>' +
+  '</svg>';
+
+const HEADING_CHEVRON_URL = `data:image/svg+xml;base64,${btoa(HEADING_CHEVRON_SVG)}`;
+const ORIGIN_PIN_URL = `data:image/svg+xml;base64,${btoa(ORIGIN_PIN_SVG)}`;
+const DEST_PIN_URL = `data:image/svg+xml;base64,${btoa(DEST_PIN_SVG)}`;
+
+const HEADING_CHEVRON_ICON = {
+  url: HEADING_CHEVRON_URL,
+  width: 32,
+  height: 32,
+  anchorX: 16,
+  anchorY: 16,
+  mask: false,
+};
+
+const ORIGIN_PIN_ICON = {
+  url: ORIGIN_PIN_URL,
+  width: 32,
+  height: 40,
+  anchorX: 16,
+  anchorY: 38, // anchor at the point of the pin
+  mask: false,
+};
+
+const DEST_PIN_ICON = {
+  url: DEST_PIN_URL,
+  width: 32,
+  height: 40,
+  anchorX: 16,
+  anchorY: 38,
+  mask: false,
+};
+
 export interface GMACanvasProps {
   selectedRoute: ScoredRoute | null;
   /** Per-segment route colored by sun / tree / building shadow status. */
@@ -90,15 +149,29 @@ export interface GMACanvasProps {
   glareHotspots: GlareHotspot[] | null;
   /**
    * User's live position from useLiveLocation. When present, GMACanvas
-   * renders a pulsing blue dot like Google Maps.
+   * renders a pulsing blue dot like Google Maps. `headingDeg` (degrees
+   * clockwise from N) gates a directional chevron rendered ON the dot
+   * during navigation so the user can read which way they're facing
+   * at a glance — null hides the chevron and falls back to a plain
+   * blue dot.
    */
-  liveLocation: { lat: number; lng: number; accuracyM: number | null } | null;
+  liveLocation: {
+    lat: number;
+    lng: number;
+    accuracyM: number | null;
+    headingDeg?: number | null;
+  } | null;
   /**
    * Whether the app is in navigation mode — bumps the route polyline
    * width and skips the picking/tooltip behavior so the live dot reads
-   * as the primary signal.
+   * as the primary signal. Also enables the green origin pin + red
+   * destination pin via `originPoint` / `destinationPoint`.
    */
   navigating: boolean;
+  /** Green pin shown at the route's origin while navigating. */
+  originPoint?: { lat: number; lng: number } | null;
+  /** Red pin shown at the route's destination while navigating. */
+  destinationPoint?: { lat: number; lng: number } | null;
   /**
    * Active theme — drives map-overlay opacity. Light mode keeps overlays
    * subtle (so the white basemap stays readable); dark mode amplifies to
@@ -121,6 +194,8 @@ export function GMACanvas({
   liveLocation,
   navigating,
   theme,
+  originPoint,
+  destinationPoint,
 }: GMACanvasProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const isDark = theme === 'dark';
@@ -315,10 +390,53 @@ export function GMACanvas({
       }
     }
 
+    // ---- navigation marker pins (green origin / red destination) ----
+    // Mounted only during navigation so the user always knows where
+    // they started and where they're going, even when the follow-cam
+    // pans far from either endpoint. Both anchor at the point of the
+    // pin (anchorY: 38) so the geo coord is exactly underneath the tip.
+    if (navigating && originPoint) {
+      out.push(
+        new IconLayer<{ lat: number; lng: number }>({
+          id: 'nav-origin-pin',
+          data: [originPoint],
+          getPosition: (d) => [d.lng, d.lat],
+          getIcon: () => ORIGIN_PIN_ICON,
+          getSize: 40,
+          sizeUnits: 'pixels',
+          pickable: false,
+          parameters: { depthCompare: 'always', depthWriteEnabled: false },
+          updateTriggers: {
+            getPosition: [originPoint.lng, originPoint.lat],
+          },
+        }),
+      );
+    }
+    if (navigating && destinationPoint) {
+      out.push(
+        new IconLayer<{ lat: number; lng: number }>({
+          id: 'nav-destination-pin',
+          data: [destinationPoint],
+          getPosition: (d) => [d.lng, d.lat],
+          getIcon: () => DEST_PIN_ICON,
+          getSize: 40,
+          sizeUnits: 'pixels',
+          pickable: false,
+          parameters: { depthCompare: 'always', depthWriteEnabled: false },
+          updateTriggers: {
+            getPosition: [destinationPoint.lng, destinationPoint.lat],
+          },
+        }),
+      );
+    }
+
     // ---- live location dot (Google-Maps-style blue) ----------------
-    // Two stacked ScatterplotLayers: a soft accuracy halo + a solid dot
-    // with a white border. Rendered on top of everything else so it
-    // always reads, even over the route polyline.
+    // Three stacked layers when a heading is known:
+    //   1. Accuracy halo (soft blue circle, ScatterplotLayer)
+    //   2. Heading chevron (IconLayer, rotated to compass heading)
+    //   3. Solid blue dot with white border (ScatterplotLayer)
+    // The chevron renders BENEATH the dot so the dot is the visual
+    // anchor and the chevron reads as an under-fanned direction cue.
     if (liveLocation) {
       const liveData = [liveLocation];
       out.push(
@@ -345,6 +463,38 @@ export function GMACanvas({
           },
         }),
       );
+
+      // Heading chevron — only when we have a real compass heading
+      // from the geolocation watch (typically only true on mobile
+      // devices that have a compass + the user is moving).
+      // deck.gl IconLayer `getAngle` rotates COUNTERCLOCKWISE in
+      // degrees, so negate the compass heading (which is clockwise
+      // from north) to get the chevron's nose pointing in travel
+      // direction.
+      if (liveLocation.headingDeg != null) {
+        out.push(
+          new IconLayer<{
+            lat: number;
+            lng: number;
+            headingDeg?: number | null;
+          }>({
+            id: 'live-location-heading',
+            data: liveData,
+            getPosition: (d) => [d.lng, d.lat],
+            getIcon: () => HEADING_CHEVRON_ICON,
+            getSize: 38,
+            sizeUnits: 'pixels',
+            getAngle: (d) => -(d.headingDeg ?? 0),
+            pickable: false,
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            updateTriggers: {
+              getPosition: [liveLocation.lng, liveLocation.lat],
+              getAngle: liveLocation.headingDeg,
+            },
+          }),
+        );
+      }
+
       out.push(
         new ScatterplotLayer<{ lat: number; lng: number }>({
           id: 'live-location-dot',
@@ -384,6 +534,8 @@ export function GMACanvas({
     liveLocation,
     navigating,
     theme,
+    originPoint,
+    destinationPoint,
   ]);
 
   const getTooltip = useCallback(

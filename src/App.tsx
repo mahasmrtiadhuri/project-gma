@@ -965,11 +965,14 @@ export default function App() {
                 lat: liveLocation.coord.lat,
                 lng: liveLocation.coord.lng,
                 accuracyM: liveLocation.accuracyM,
+                headingDeg: liveLocation.heading,
               }
             : null
         }
         navigating={navigating}
         theme={theme}
+        originPoint={navigating ? origin?.point ?? null : null}
+        destinationPoint={navigating ? destination?.point ?? null : null}
       />
 
       {!navigating && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
