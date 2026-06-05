@@ -38,6 +38,15 @@ export function StartButton({ visible, dayColor, onStart }: StartButtonProps) {
         right: 0,
         zIndex: 200,
         padding: '12px 16px',
+        // Opaque sheet-surface background so route cards scrolling
+        // up from below get visually cropped at the Start strip
+        // instead of bleeding through the 12 px padding band around
+        // the gradient pill. A thin top border + subtle upward shadow
+        // makes the strip read as a discrete chrome band rather than
+        // a hovering button.
+        background: 'var(--gma-surface)',
+        borderTop: '1px solid var(--gma-border)',
+        boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.08)',
       }}
     >
       <button

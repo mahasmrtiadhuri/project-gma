@@ -3297,3 +3297,19 @@ Spec asked to remove a debug red border. Grepped the entire `src/` tree for any 
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, CSS ~29.6 KB / gzip 6.7 KB, ~11 s)
+
+---
+
+## 2026-06-04 — Start button: opaque strip + correct scroll padding
+
+User reported route cards scrolling visibly behind the Start button band. The Start container's outer wrapper was transparent — only the gradient pill had a background, so cards bled through the 12 px padding band around it as they scrolled.
+
+### Fixes
+
+- **[src/components/StartButton.tsx](src/components/StartButton.tsx)** — outer fixed wrapper now opaque: `background: var(--gma-surface); borderTop: 1px solid var(--gma-border); boxShadow: 0 -8px 24px rgba(0,0,0,0.08)`. The whole strip reads as a discrete bottom-chrome band, route cards that scroll up from below get cleanly cropped by the strip instead of bleeding through.
+- **[src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)** — scrollable routes-list `paddingBottom` reduced from 140 → 80 px per spec. The 80 px figure matches the Start strip's own height (12 + 56 + 12), giving the last card room to scroll above the strip; any further scroll just slides the card cleanly behind the opaque strip.
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, ~13 s)

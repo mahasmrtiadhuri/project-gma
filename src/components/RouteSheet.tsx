@@ -393,13 +393,13 @@ export function RouteSheet({
 
       <div
         className="flex-1 overflow-y-auto"
-        // Bottom padding clears the fixed Start strip:
-        //   12 px top pad + 56 px button + 12 px bottom pad = 80 px
-        //   container, anchored at `bottom: 56px` (Chrome Android nav
-        //   bar). Inside the sheet that means the bottom-most 140 px
-        //   visually overlaps with the Start strip → pad by 140 px so
-        //   the last route card can be scrolled clear of it.
-        style={{ paddingBottom: '140px' }}
+        // 80 px bottom padding gives the last route card room to
+        // scroll up above the Start strip. The Start strip itself
+        // (80 px tall) sits at `bottom: 56 px` so it occupies
+        // viewport pixels 56–136 from the bottom. Cards behind the
+        // strip get cleanly cropped by the strip's opaque
+        // `var(--gma-surface)` background — see StartButton.tsx.
+        style={{ paddingBottom: '80px' }}
       >
         {allMostlySunny && (
           <div
