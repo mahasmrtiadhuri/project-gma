@@ -285,7 +285,7 @@ export function RouteSheet({
       //
       // Desktop (sm and up): max-height-only so a longer routes list
       // doesn't force a fixed 55 % chrome.
-      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[min(55vh,400px)] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
+      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[50vh] max-h-[50vh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
       style={{
         boxShadow: 'var(--gma-shadow-lg)',
         borderBottom: 'none',
@@ -393,10 +393,13 @@ export function RouteSheet({
 
       <div
         className="flex-1 overflow-y-auto"
-        // Bottom padding clears the fixed Start button (≈ 88 px tall +
-        // 16 px safe-area inset) so the last route card can be
-        // scrolled fully into view above the floating button.
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)' }}
+        // Bottom padding clears the fixed Start strip:
+        //   12 px top pad + 56 px button + 12 px bottom pad = 80 px
+        //   container, anchored at `bottom: 56px` (Chrome Android nav
+        //   bar). Inside the sheet that means the bottom-most 140 px
+        //   visually overlaps with the Start strip → pad by 140 px so
+        //   the last route card can be scrolled clear of it.
+        style={{ paddingBottom: '140px' }}
       >
         {allMostlySunny && (
           <div

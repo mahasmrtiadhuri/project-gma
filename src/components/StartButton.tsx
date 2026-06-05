@@ -7,36 +7,55 @@ export interface StartButtonProps {
 }
 
 /**
- * Fixed-position Start button. Lives at the very bottom of the
- * viewport (left:16, right:16, bottom: safe-area-inset-bottom) at
- * z-100 so it's ALWAYS visible regardless of route-sheet height or
- * phone size. Previously baked into RouteSheet, which meant on
- * small phones (where the sheet's max-height clipped the button
- * out of view) the user couldn't see / tap Start.
+ * Fixed-position Start button — full-width strip pinned to the bottom
+ * of the viewport above the Android Chrome nav bar (~56 px).
+ *
+ * Layout (per Pixel 9 Pro XL field test):
+ *   Viewport height (Chrome with bottom bar): ≈ 820 px
+ *   Sheet (max-h: 50vh):                       ≈ 410 px  → occupies bottom 0–410
+ *   Start container (bottom: 56, h ≈ 68):      → occupies bottom 56–124
+ *   Sheet visible band above Start:            ≈ 286 px  → enough for handle +
+ *                                                          filter pills + 1–2
+ *                                                          route cards
+ *   "?" legend (bottom: 50vh + 72):            → bottom 482 (above sheet)
+ *
+ * We HARD-CODE `bottom: 56 px` (no `env(safe-area-inset-bottom)`) because
+ * Chrome Android does not report the home-gesture inset via env() — the
+ * 56 px figure matches the persistent bottom nav bar height there.
+ * iOS Safari has its own safe-area handling and lands the button slightly
+ * higher (the inset reports ~34 px), but Chrome Android is the dominant
+ * device target for this build per the user's report.
  */
 export function StartButton({ visible, dayColor, onStart }: StartButtonProps) {
   if (!visible) return null;
   const accent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   return (
-    <button
-      type="button"
-      onClick={onStart}
-      className="gma-press-soft pointer-events-auto fixed flex h-14 items-center justify-center gap-2 rounded-xl text-base font-medium uppercase tracking-wider"
+    <div
+      className="pointer-events-auto fixed"
       style={{
-        backgroundImage: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 80%, #b45309) 100%)`,
-        backgroundColor: accent,
-        color: 'var(--gma-text-on-accent)',
-        boxShadow: 'var(--gma-shadow-lg), var(--gma-glow-amber)',
-        left: '16px',
-        right: '16px',
-        bottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-        zIndex: 100,
+        bottom: '56px',
+        left: 0,
+        right: 0,
+        zIndex: 200,
+        padding: '12px 16px',
       }}
-      aria-label="Start navigation"
     >
-      <NavIcon />
-      Start
-    </button>
+      <button
+        type="button"
+        onClick={onStart}
+        className="gma-press-soft flex h-14 w-full items-center justify-center gap-2 rounded-xl text-base font-medium uppercase tracking-wider"
+        style={{
+          backgroundImage: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 80%, #b45309) 100%)`,
+          backgroundColor: accent,
+          color: 'var(--gma-text-on-accent)',
+          boxShadow: 'var(--gma-shadow-lg), var(--gma-glow-amber)',
+        }}
+        aria-label="Start navigation"
+      >
+        <NavIcon />
+        Start
+      </button>
+    </div>
   );
 }
 

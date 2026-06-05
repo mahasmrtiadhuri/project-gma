@@ -3258,3 +3258,42 @@ New [src/components/ColorLegendButton.tsx](src/components/ColorLegendButton.tsx)
 
 - `tsc -b` clean
 - `vite build` clean (~1.44 MB main chunk, CSS ~29.7 KB / gzip 6.8 KB, ~10 s)
+
+---
+
+## 2026-06-04 — Android Chrome (Pixel 9 Pro XL) specific positioning
+
+User reported Start button + "?" color legend invisible on Pixel 9 Pro XL (1344 × 2992 px native, ≈ 820 px CSS viewport in Chrome with bottom bar visible). Chrome on Android does not expose its bottom-nav band via `env(safe-area-inset-bottom)` — that reports 0 — so the prior `bottom: max(env(safe-area-inset-bottom, 0px), 16px)` was landing the Start button under the Chrome bar.
+
+### Layout math (Pixel 9 Pro XL, Chrome with bottom bar)
+
+| Element | Position | Pixel range from viewport bottom |
+|---|---|---|
+| Viewport | — | 0 – 820 |
+| Route sheet | `bottom: 0; h: 50vh` | 0 – 410 |
+| Start strip | `bottom: 56; padding 12 16` (button h:56) | 56 – 124 |
+| Color "?" button | `right: 16; bottom: calc(50vh + 72)` | 482 – 522 |
+| Map view switcher | `right: 16; bottom: calc(50vh + 72 + 40 + 16)` | 538 – ~680 |
+| Theme toggle | `right: 16; top: env+1rem` (unchanged) | top zone |
+
+Sheet's visible band above the Start strip ≈ 410 − 124 = 286 px → enough for drag handle + filter pills + 1–2 route cards. The "?" sits cleanly 72 px above the sheet, and MapViewSwitcher stacks above it.
+
+### Changes
+
+- **[src/components/StartButton.tsx](src/components/StartButton.tsx)** — restructured. Outer wrapper is `position: fixed; bottom: 56px; left: 0; right: 0; z-index: 200; padding: 12px 16px`. Inner button is the gradient pill. `env()` safe-area removed entirely — 56 px is the Chrome Android bottom-bar height verbatim per spec.
+- **[src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)** — mobile height switched to `h-[50vh] max-h-[50vh]` (was `min(55vh, 400px)`). Scroll-container bottom padding bumped to `140 px` so the last route card scrolls cleanly above the lifted Start strip.
+- **[src/components/ColorLegendButton.tsx](src/components/ColorLegendButton.tsx)** — moved from bottom-left to bottom-right per spec. Button: `position: fixed; right: 16; bottom: calc(50vh + 72px); z-index: 150`. Tooltip pops up 3 rem above the button (`bottom: calc(50vh + 72px + 3rem)`).
+- **[src/components/MapViewSwitcher.tsx](src/components/MapViewSwitcher.tsx)** — sheet-open offset updated to `calc(50vh + 72px + 40px + 1rem)` so it stacks above the "?" button. Previously at `min(55vh, 400px) + 1rem` which now collides with the "?" zone.
+
+### "Remove debug red border"
+
+Spec asked to remove a debug red border. Grepped the entire `src/` tree for any `border-red`, `border: 2px solid red`, or similar — none exist in the codebase. Noted and skipped.
+
+### Why hard-code 56 px instead of env()
+
+`env(safe-area-inset-bottom)` on Chrome Android with the bottom bar visible reports `0` (the bar isn't part of the safe-area model the way the iOS home indicator is). So `max(env(safe-area-inset-bottom, 0px), 16px)` was always picking 16 px, which lands the Start button DIRECTLY under the Chrome bar. Hard-coding 56 px matches Chrome's persistent bar height and unblocks the user. iOS Safari uses env() correctly and lands ~34 px from the bottom — a small regression we're accepting because the user's primary device is Android.
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.44 MB main chunk, CSS ~29.6 KB / gzip 6.7 KB, ~11 s)

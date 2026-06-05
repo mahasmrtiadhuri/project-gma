@@ -39,15 +39,17 @@ const LEGEND_ENTRIES: ReadonlyArray<LegendEntry> = [
 ];
 
 /**
- * Small floating "?" button bottom-left that opens a small tooltip card
- * explaining what the route polyline's segment colors mean. Visible
- * only when a route is on the map (parent gates via `visible`). Tap
- * the button to toggle; tap anywhere off the tooltip (the dimmed
- * backdrop) to close.
+ * Small floating "?" button bottom-right that opens a tooltip card
+ * explaining what the route polyline's segment colors mean.
  *
- * Position: bottom-left, above the bottom sheet — `bottom: min(55vh,
- * 400px) + 16px` matches the sheet's exact top edge on every screen
- * size so the button always sits just above the sheet, never under it.
+ * Position (Android Chrome / Pixel 9 Pro XL field-tested):
+ *   - Button: `position: fixed; right: 16px; bottom: calc(50vh + 72px); z-index: 150`
+ *     Sits 72 px above the sheet's top edge so it never overlaps the
+ *     sheet's drag handle or filter pills.
+ *   - Tooltip: opens immediately above the button.
+ *
+ * Visible only when a route is on the map. Tap the button to toggle;
+ * tap anywhere off the tooltip (the dimmed backdrop) to close.
  */
 export function ColorLegendButton({ visible }: ColorLegendButtonProps) {
   const [open, setOpen] = useState(false);
@@ -61,7 +63,7 @@ export function ColorLegendButton({ visible }: ColorLegendButtonProps) {
           type="button"
           aria-label="Close color legend"
           onClick={() => setOpen(false)}
-          className="pointer-events-auto fixed inset-0 z-[44] cursor-default bg-transparent"
+          className="pointer-events-auto fixed inset-0 z-[149] cursor-default bg-transparent"
         />
       )}
 
@@ -69,10 +71,11 @@ export function ColorLegendButton({ visible }: ColorLegendButtonProps) {
         <div
           role="dialog"
           aria-label="Route color legend"
-          className="gma-card gma-pop-in pointer-events-auto absolute z-[46] w-[min(240px,calc(100vw-2rem))] rounded-2xl p-3"
+          className="gma-card gma-pop-in pointer-events-auto fixed w-[min(260px,calc(100vw-2rem))] rounded-2xl p-3"
           style={{
-            left: '16px',
-            bottom: 'calc(min(55vh, 400px) + 4rem)',
+            right: '16px',
+            bottom: 'calc(50vh + 72px + 3rem)',
+            zIndex: 151,
             boxShadow: 'var(--gma-shadow-lg)',
           }}
         >
@@ -107,13 +110,11 @@ export function ColorLegendButton({ visible }: ColorLegendButtonProps) {
         onClick={() => setOpen((v) => !v)}
         aria-label="Show route color legend"
         aria-expanded={open}
-        className="gma-card gma-press pointer-events-auto absolute z-[45] flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-[var(--gma-text-primary)]"
+        className="gma-card gma-press pointer-events-auto fixed flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-[var(--gma-text-primary)]"
         style={{
-          left: '16px',
-          // Sit just above the bottom sheet on every screen size — the
-          // sheet is `min(55vh, 400px)` tall, so this offset clears it
-          // by 1 rem on small phones AND on tall desktops.
-          bottom: 'calc(min(55vh, 400px) + 1rem)',
+          right: '16px',
+          bottom: 'calc(50vh + 72px)',
+          zIndex: 150,
         }}
       >
         ?

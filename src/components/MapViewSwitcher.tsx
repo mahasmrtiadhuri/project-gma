@@ -44,9 +44,10 @@ export function MapViewSwitcher({
     // above the safe-area inset.
     bottomStyle = 'calc(env(safe-area-inset-bottom, 0px) + 6.5rem)';
   } else if (routeSheetOpen) {
-    // Above the route sheet (min(55vh, 400px) — same formula as the
-    // sheet itself), plus a 1 rem gap.
-    bottomStyle = 'calc(min(55vh, 400px) + 1rem)';
+    // Above BOTH the route sheet (50vh) AND the "?" color-legend
+    // button which sits at `bottom: calc(50vh + 72px)`. The "?" is
+    // 40 px tall; we stack the switcher 16 px above it.
+    bottomStyle = 'calc(50vh + 72px + 40px + 1rem)';
   } else {
     bottomStyle = 'calc(env(safe-area-inset-bottom, 0px) + 2rem)';
   }
