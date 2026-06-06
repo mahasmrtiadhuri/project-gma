@@ -208,6 +208,14 @@ export interface RouteSheetProps {
    */
   legendMode?: 'sun' | 'wind' | 'rain';
   legendSnow?: boolean;
+  /**
+   * Desktop sidebar mode. When true, the sheet renders as a normal
+   * flex-column child of the sidebar — no absolute positioning, no
+   * fixed height, no rounded-top corners, no bottom scroll padding
+   * (the sibling embedded Start button uses the sidebar's natural
+   * bottom edge instead of overlapping the scroll area).
+   */
+  embedded?: boolean;
 }
 
 /**
@@ -231,6 +239,7 @@ export function RouteSheet({
   windSpeedMph,
   legendMode,
   legendSnow = false,
+  embedded = false,
 }: RouteSheetProps) {
   const dayAccent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   const sunDirection = filterToSunDirection(filterMode);
@@ -273,48 +282,56 @@ export function RouteSheet({
       (r) => r.meanSunExposure != null && r.meanSunExposure > 0.7,
     );
 
+  // Conditional shell — `embedded` switches between the mobile
+  // bottom-sheet (absolute, 50 vh, rounded top corners only) and the
+  // desktop sidebar mode (regular flex child of the sidebar column,
+  // no positioning, no rounded corners since it stacks between the
+  // top form pills and the bottom Start button).
+  const shellClass = embedded
+    ? 'gma-card pointer-events-auto flex w-full min-h-0 flex-1 flex-col overflow-hidden border-0 bg-transparent'
+    : 'gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[50vh] max-h-[50vh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]';
+
   return (
     <div
-      // Mobile: FIXED 55 % viewport height so the route cards + Start
-      // button fit without scrolling the sheet itself. The route list
-      // (`flex-1 overflow-y-auto` further down) scrolls inside, and
-      // the Start container (last shrink-0 child) is always the
-      // bottom-most visible band. The `min(55vh, 55dvh)` form picks
-      // the smaller of the two so older iOS Safari (≤15.3, dvh = 0)
-      // gets the vh fallback instead of a collapsed sheet.
-      //
-      // Desktop (sm and up): max-height-only so a longer routes list
-      // doesn't force a fixed 55 % chrome.
-      className="gma-card pointer-events-auto absolute bottom-0 left-1/2 z-30 flex h-[50vh] max-h-[50vh] w-[min(440px,100vw)] -translate-x-1/2 flex-col rounded-t-2xl sm:h-auto sm:max-h-[min(75vh,75dvh)]"
+      className={shellClass}
       style={{
-        boxShadow: 'var(--gma-shadow-lg)',
+        boxShadow: embedded ? 'none' : 'var(--gma-shadow-lg)',
         borderBottom: 'none',
       }}
       role="dialog"
       aria-label="Route options"
     >
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="Close routes"
-        className="gma-press absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)]"
-      >
-        <CloseIcon />
-      </button>
+      {!embedded && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Close routes"
+          className="gma-press absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full text-[var(--gma-text-secondary)] hover:bg-[var(--gma-hover-bg)] hover:text-[var(--gma-text-primary)]"
+        >
+          <CloseIcon />
+        </button>
+      )}
 
-      <div
-        className="mx-auto my-2 h-1 w-10 shrink-0 rounded-full"
-        style={{ background: 'var(--gma-border-strong)' }}
-      />
+      {!embedded && (
+        <div
+          className="mx-auto my-2 h-1 w-10 shrink-0 rounded-full"
+          style={{ background: 'var(--gma-border-strong)' }}
+        />
+      )}
 
       {legendMode && (
         <InlineRouteLegend mode={legendMode} snow={legendSnow} />
       )}
 
-      {/* `pl-4 pr-16` reserves 64 px on the right (12 px right-3 inset
-       * + 44 px close button + ≥ 8 px breathing room) so the active
-       * filter pill (e.g. SUNNY) doesn't collide with the X. */}
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-3 pl-4 pr-16 pt-1 [-ms-overflow-style:none] [scrollbar-width:none]">
+      {/* On mobile, `pr-16` reserves space for the close button on the
+       * right edge. In embedded sidebar mode there's no close button,
+       * so symmetric `px-4` is fine. */}
+      <div
+        className={
+          'flex shrink-0 gap-1.5 overflow-x-auto pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] ' +
+          (embedded ? 'px-4' : 'pl-4 pr-16')
+        }
+      >
         {visibleFilters.map((mode) => {
           const meta = FILTER_META[mode];
           const active = mode === filterMode;
@@ -396,11 +413,12 @@ export function RouteSheet({
 
       <div
         className="flex-1 overflow-y-auto"
-        // 120 px bottom padding so the trailing "More options"
-        // disclosure can scroll fully clear of the Start strip.
-        // Strip occupies viewport pixels 56–136 from the bottom; 120 px
-        // padding gives the disclosure a 64 px landing zone above it.
-        style={{ paddingBottom: '120px' }}
+        // Mobile: 120 px bottom padding so the trailing "More options"
+        // disclosure can scroll above the floating Start strip
+        // (occupies viewport pixels 56–136 from the bottom).
+        // Embedded (desktop sidebar): the sibling Start button is a
+        // normal flex item below the scroll area, so no padding needed.
+        style={{ paddingBottom: embedded ? '12px' : '120px' }}
       >
         {allMostlySunny && (
           <div

@@ -4,29 +4,65 @@ export interface StartButtonProps {
   visible: boolean;
   dayColor: RGB;
   onStart: () => void;
+  /**
+   * Render as a normal flex-column child (no fixed positioning) for
+   * the desktop sidebar. The button still uses the same amber-pill
+   * styling — it just stays in document flow at the bottom of the
+   * sidebar instead of floating over the viewport.
+   */
+  embedded?: boolean;
 }
 
 const AMBER = '#F59E0B';
 
 /**
- * Primary CTA — solid amber pill, white bold text, fixed at the bottom
- * of the viewport above the Android Chrome nav bar (56 px).
+ * Primary CTA — solid amber pill, white bold text, 56 px tall.
  *
- * Reads as a real button rather than a faded strip: no surrounding
- * surface band, just the pill itself, full-width on mobile (16 px
- * gutters) and capped at 460 px centered on desktop.
+ * Mobile / floating mode (`embedded` = false, the default):
+ *   `position: fixed; bottom: 56px; left: 16; right: 16; z: 200`.
+ *   Centered on desktop screens with `sm:max-w-[460px]`. This is the
+ *   mode the demo runs on phone — always visible above the Chrome
+ *   Android nav bar regardless of route-sheet height.
  *
- * Despite the prop name `dayColor`, the live time-of-day color is
- * intentionally NOT used here — we want a stable, recognizable amber
- * across the whole day so the Start affordance reads the same at noon
- * as at dusk. The prop stays in the API for symmetry with other
- * accented components and to leave the door open for re-tinting later.
+ * Embedded mode (`embedded` = true):
+ *   Renders as a normal flex item inside the desktop sidebar at its
+ *   natural bottom edge. No fixed positioning.
+ *
+ * Despite the `dayColor` prop, the live time-of-day color is
+ * intentionally NOT used — we want a stable amber across the whole
+ * day so the Start affordance reads the same at noon as at dusk.
  */
-export function StartButton({ visible, dayColor, onStart }: StartButtonProps) {
-  // Reference `dayColor` so the param isn't flagged as unused under
-  // `noUnusedParameters` while we keep the API stable.
-  void dayColor;
+export function StartButton({
+  visible,
+  dayColor,
+  onStart,
+  embedded = false,
+}: StartButtonProps) {
+  void dayColor; // kept on the API for symmetry; intentionally unused
   if (!visible) return null;
+
+  const SHARED_BUTTON_STYLE: React.CSSProperties = {
+    background: AMBER,
+    color: '#ffffff',
+    boxShadow:
+      '0 6px 20px rgba(245, 158, 11, 0.40), 0 2px 8px rgba(0, 0, 0, 0.12)',
+  };
+
+  if (embedded) {
+    return (
+      <button
+        type="button"
+        onClick={onStart}
+        aria-label="Start navigation"
+        className="gma-press-soft flex h-14 w-full items-center justify-center gap-2 rounded-xl text-base font-bold uppercase tracking-wider"
+        style={SHARED_BUTTON_STYLE}
+      >
+        <NavIcon />
+        Start
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -34,12 +70,9 @@ export function StartButton({ visible, dayColor, onStart }: StartButtonProps) {
       aria-label="Start navigation"
       className="gma-press-soft pointer-events-auto fixed left-4 right-4 flex h-14 items-center justify-center gap-2 rounded-xl text-base font-bold uppercase tracking-wider sm:left-1/2 sm:right-auto sm:w-[460px] sm:-translate-x-1/2"
       style={{
-        background: AMBER,
-        color: '#ffffff',
+        ...SHARED_BUTTON_STYLE,
         bottom: '56px',
         zIndex: 200,
-        boxShadow:
-          '0 6px 20px rgba(245, 158, 11, 0.40), 0 2px 8px rgba(0, 0, 0, 0.12)',
       }}
     >
       <NavIcon />

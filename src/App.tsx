@@ -130,6 +130,28 @@ export default function App() {
   // tokens in globals.css and crossfades the entire UI in 300 ms.
   const { theme, toggle: toggleTheme } = useTheme();
 
+  // Desktop / mobile breakpoint. ≥ 768 px gets the dedicated 380 px
+  // sidebar layout (every chrome card stacked vertically, fully
+  // visible, scrollable). < 768 px keeps the current mobile floating
+  // layout (search at top, sheet sliding up from bottom). Tracked
+  // reactively so a window resize crossing the breakpoint redraws
+  // the whole layout immediately.
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(min-width: 768px)').matches;
+  });
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handler = (event: MediaQueryListEvent) => setIsDesktop(event.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  // Sidebar is active only when on desktop AND not currently in
+  // navigation mode (nav takes the full viewport regardless of size).
+  // sheetOpen is checked later by individual children that conditionally
+  // mount on user input.
+  const useSidebar = isDesktop && !navigating;
+
   // Live geolocation watch is gated on `navigating` so we don't drain
   // battery / spam the permission prompt outside of an active route.
   const liveLocation = useLiveLocation(navigating);
@@ -1058,8 +1080,12 @@ export default function App() {
   const phaseDisplay =
     daylight.phase.charAt(0).toUpperCase() + daylight.phase.slice(1);
 
-  return (
-    <div className="relative h-dvh w-dvw overflow-hidden bg-[var(--gma-bg)]">
+  // Shared chrome rendered inside the map area on both layouts.
+  // Returns a Fragment so it can be slotted into either the
+  // `relative flex-1` desktop map container or directly into the
+  // mobile root.
+  const renderMapAndSharedChrome = () => (
+    <>
       <GMACanvas
         selectedRoute={selectedRoute}
         coloredSegments={coloredSegments}
@@ -1072,9 +1098,6 @@ export default function App() {
         viewState={viewState}
         onViewStateChange={(next, userInteracting) => {
           setViewState(next);
-          // Pause follow-cam whenever the user explicitly drags or
-          // pinches the map. Auto-resumes after 5 s of no interaction
-          // — see `pauseFollowCam` for the timer.
           if (navigating && userInteracting) {
             pauseFollowCam();
           }
@@ -1095,28 +1118,21 @@ export default function App() {
         destinationPoint={navigating ? destination?.point ?? null : null}
       />
 
-      {!navigating && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
-
       <SunGlow
         sunAzimuthDeg={solar.azimuthDeg}
         sunElevationDeg={solar.elevationDeg}
         dayColor={daylight.color}
       />
 
-      {/*
-        LAYER 1 — Top stack. SearchBar + TransportModeSwitcher + TimePicker
-        all share a single flex column container so they auto-stack with
-        consistent gaps. No `top-[Xrem]` hand-tuned offsets anywhere —
-        a longer search card or wrapped transport row simply pushes the
-        time picker down, no overlap risk. Right inset (4.5 rem) leaves
-        a permanent gutter for the ThemeToggle floating at top-right.
-      */}
-      {!navigating && (
+      {!navigating && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
+
+      {/* Mobile-only floating top stack — gated on !useSidebar so it
+       * never paints on desktop (where the same chrome lives in the
+       * sidebar). */}
+      {!useSidebar && !navigating && (
         <div
           className="pointer-events-none absolute left-2 right-[4.5rem] top-0 z-40 flex flex-col items-center gap-2"
-          style={{
-            paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
-          }}
+          style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)' }}
         >
           <div className="w-full max-w-[460px]">
             <SearchBar
@@ -1150,7 +1166,8 @@ export default function App() {
         </div>
       )}
 
-      {!navigating && sheetOpen && (
+      {/* Mobile-only floating route sheet + Start button */}
+      {!useSidebar && !navigating && sheetOpen && (
         <RouteSheet
           routes={result?.routes ?? []}
           selectedRouteIdx={safeIdx}
@@ -1175,6 +1192,18 @@ export default function App() {
               : undefined
           }
           legendSnow={weather?.precipitationType === 'snow'}
+        />
+      )}
+      {!useSidebar && (
+        <StartButton
+          visible={
+            !navigating &&
+            sheetOpen &&
+            !routesLoading &&
+            (result?.routes.length ?? 0) > 0
+          }
+          dayColor={daylight.color}
+          onStart={handleStartNavigation}
         />
       )}
 
@@ -1210,45 +1239,126 @@ export default function App() {
           windSpeedMph={weather?.windSpeedMph ?? null}
           precipitationType={weather?.precipitationType ?? null}
           precipitationProbability={weather?.precipitationProbability ?? null}
-          routeSheetOpen={sheetOpen}
+          // On desktop the sheet lives in the sidebar — never overlaps
+          // the SunCompass which sits bottom-left of the map area.
+          routeSheetOpen={!useSidebar && sheetOpen}
         />
       )}
 
-      {/*
-       * MapViewSwitcher stays visible during navigation — the user owns
-       * the map view choice (2D / 3D / Satellite) and may want to flip
-       * it mid-route. Auto-3D on Start was removed; the switcher is the
-       * single way to change views now. On mobile (<sm) the switcher
-       * hides itself when the bottom sheet is open since the sheet
-       * goes full-width and would overlap.
-       */}
       <MapViewSwitcher
         value={mapView}
         onChange={setMapView}
-        routeSheetOpen={sheetOpen && !navigating}
+        // Sidebar layout never overlaps the switcher, so leave the
+        // mobile-sheet bottom-stacking off.
+        routeSheetOpen={!useSidebar && sheetOpen && !navigating}
         navigating={navigating}
       />
 
-      {/* Floating Start button — fixed at viewport bottom, z-100, always
-       * visible when there's at least one routable candidate. Lives
-       * outside the RouteSheet so a tight sheet height on small phones
-       * can never clip it off-screen. */}
-      <StartButton
-        visible={
-          !navigating &&
-          sheetOpen &&
-          !routesLoading &&
-          (result?.routes.length ?? 0) > 0
-        }
-        dayColor={daylight.color}
-        onStart={handleStartNavigation}
+      <DataAttribution
+        // Hide the bottom attribution whenever the mobile sheet, nav
+        // chrome, or desktop sidebar covers the bottom band.
+        visible={!navigating && (useSidebar || !sheetOpen)}
       />
+    </>
+  );
 
+  return useSidebar ? (
+    // ─── DESKTOP LAYOUT ────────────────────────────────────────────
+    // 380 px sidebar on the left contains search + transport pills +
+    // time picker + (when routes exist) the embedded RouteSheet + the
+    // embedded Start button. Everything stays fully visible without
+    // truncation — the routes list itself scrolls inside the sheet.
+    // Map fills the remaining `flex-1` area; all the floating chrome
+    // (ThemeToggle, SunCompass, MapViewSwitcher) positions relative
+    // to that map area, so it never overlaps the sidebar.
+    <div className="relative flex h-dvh w-dvw overflow-hidden bg-[var(--gma-bg)]">
+      <aside
+        className="flex w-[380px] shrink-0 flex-col gap-3 overflow-hidden border-r p-4"
+        style={{
+          borderColor: 'var(--gma-border)',
+          background: 'var(--gma-bg)',
+          paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
+        }}
+        aria-label="Search + route options"
+      >
+        <SearchBar
+          origin={origin}
+          destination={destination}
+          onOriginChange={setOrigin}
+          onDestinationChange={setDestination}
+          onSwap={handleSwap}
+        />
+        {sheetOpen && (
+          <TransportModeSwitcher
+            value={travelMode}
+            onChange={setTravelMode}
+            dayColor={daylight.color}
+          />
+        )}
+        {sheetOpen && (
+          <TimePicker
+            mode={timeMode}
+            plannedTime={plannedTime}
+            onChange={(nextMode, nextPlannedTime) => {
+              setTimeMode(nextMode);
+              setPlannedTime(nextPlannedTime);
+            }}
+            dayColor={daylight.color}
+          />
+        )}
+        {sheetOpen && (
+          <RouteSheet
+            embedded
+            routes={result?.routes ?? []}
+            selectedRouteIdx={safeIdx}
+            onSelectRoute={setSelectedRouteIdx}
+            filterMode={filterMode}
+            onFilterChange={handleFilterChange}
+            onDismiss={() => setDestination(null)}
+            isLoading={routesLoading}
+            dayColor={daylight.color}
+            onSubmitPreference={handleSubmitPreference}
+            geminiBusy={geminiBusy}
+            precipitationProbability={weather?.precipitationProbability ?? 0}
+            precipitationType={weather?.precipitationType ?? 'none'}
+            windSpeedMph={weather?.windSpeedMph ?? 0}
+            legendMode={
+              coloredSegments && coloredSegments.length > 0
+                ? coloringMode === 'wind'
+                  ? 'wind'
+                  : coloringMode === 'rain'
+                    ? 'rain'
+                    : 'sun'
+                : undefined
+            }
+            legendSnow={weather?.precipitationType === 'snow'}
+          />
+        )}
+        <StartButton
+          embedded
+          visible={
+            !navigating &&
+            sheetOpen &&
+            !routesLoading &&
+            (result?.routes.length ?? 0) > 0
+          }
+          dayColor={daylight.color}
+          onStart={handleStartNavigation}
+        />
+      </aside>
+      <div className="relative flex-1 overflow-hidden">
+        {renderMapAndSharedChrome()}
+      </div>
       <Toast message={toastMessage} />
-
-      {/* Attribution sits at the very bottom — hidden whenever the
-       * sheet or navigation chrome occupies that band. */}
-      <DataAttribution visible={!navigating && !sheetOpen} />
+    </div>
+  ) : (
+    // ─── MOBILE / NAVIGATION LAYOUT ────────────────────────────────
+    // Single relative container — GMACanvas + all floating chrome
+    // siblings, positioned absolutely against the viewport. Identical
+    // to the pre-sidebar mobile structure.
+    <div className="relative h-dvh w-dvw overflow-hidden bg-[var(--gma-bg)]">
+      {renderMapAndSharedChrome()}
+      <Toast message={toastMessage} />
     </div>
   );
 }

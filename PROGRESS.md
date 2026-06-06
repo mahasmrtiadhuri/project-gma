@@ -3437,3 +3437,65 @@ Seven-item visual polish pass.
 
 - `tsc -b` clean
 - `vite build` clean (~1.45 MB main chunk, CSS ~29.9 KB / gzip 6.8 KB, ~10 s)
+
+---
+
+## 2026-06-06 — Desktop layout: 380 px sidebar + flex-1 map
+
+App used to be designed mobile-first with absolute-positioned floating chrome over a full-viewport map. On wide screens that layout left every card clustered around the bottom-center while a huge map filled the rest, and the route-sheet's `min(440 px, 100vw)` width plus its close-button + filter pill row often clipped. This pass adds a dedicated desktop layout that puts every chrome card in a 380 px left sidebar, fully visible and scrollable when needed; mobile (< 768 px) keeps its current layout verbatim.
+
+### Layout breakdown
+
+**Desktop (≥ 768 px)**
+
+```
+┌─────────────────────┬───────────────────────────────────────────┐
+│ Sidebar (380 px)    │ Map area (flex-1, relative)               │
+│                     │                                           │
+│ • SearchBar         │ • GMACanvas                               │
+│ • TransportModes    │ • SunGlow                                 │
+│ • TimePicker        │ • ThemeToggle  (top-right of map)         │
+│ • RouteSheet*       │ • SunCompass   (bottom-left of map)       │
+│   (flex-1 scroll)   │ • MapViewSwitcher (bottom-right of map)   │
+│ • StartButton*      │ • DataAttribution (bottom-center of map)  │
+│                     │                                           │
+│ * embedded mode     │                                           │
+└─────────────────────┴───────────────────────────────────────────┘
+```
+
+**Mobile (< 768 px) / navigation mode** — unchanged from prior structure. Single `relative h-dvh w-dvw` container; map full-viewport; chrome floats over it.
+
+### Component API changes
+
+- **[src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)** — new `embedded?: boolean` prop.
+  - Default (mobile floating): `absolute bottom-0 left-1/2 z-30 ... h-[50vh]`, rounded-top corners, close button, drag handle, `paddingBottom: 120 px` on scroll area to clear the fixed Start strip, `pr-16` on filter row for close-button clearance.
+  - Embedded (desktop sidebar): `flex w-full min-h-0 flex-1 flex-col overflow-hidden`, transparent background + zero border (sidebar already provides the surface), no rounded corners, no close button, no drag handle, `paddingBottom: 12 px`, symmetric `px-4` on filter row.
+- **[src/components/StartButton.tsx](src/components/StartButton.tsx)** — new `embedded?: boolean` prop.
+  - Default (mobile floating): `position: fixed; bottom: 56; left: 16; right: 16; z: 200`; centered + max-width 460 px on desktop screens via `sm:` classes.
+  - Embedded (desktop sidebar): `flex h-14 w-full ...` — normal flex item at the bottom of the sidebar column.
+  - Same amber pill + glow shadow in both modes.
+
+### App.tsx restructure
+
+- New `isDesktop` state via `matchMedia('(min-width: 768px)')`. Listens for resize so a window-resize crossing 768 px redraws the layout immediately.
+- `const useSidebar = isDesktop && !navigating` — navigation mode always uses the full-viewport layout regardless of width.
+- Render returns one of two trees:
+  - **`useSidebar` true** — root `flex h-dvh w-dvw`, sidebar `<aside>` then `<div className="relative flex-1 overflow-hidden">` containing the shared `renderMapAndSharedChrome()` output. Sidebar renders SearchBar always, then TransportModeSwitcher / TimePicker / `<RouteSheet embedded>` / `<StartButton embedded>` only when `sheetOpen`.
+  - **`useSidebar` false** — root `relative h-dvh w-dvw overflow-hidden` containing `renderMapAndSharedChrome()` directly. Chrome elements inside the fragment guard themselves on `!useSidebar` for the mobile floating layout (top-stack + floating sheet + fixed StartButton).
+- Shared chrome elements get `useSidebar`-aware props so they never gate themselves out unnecessarily:
+  - `<SunCompass routeSheetOpen={!useSidebar && sheetOpen}>` — the sheet on desktop lives in the sidebar, so the bottom-left compass never overlaps it; only the mobile floating sheet would.
+  - `<MapViewSwitcher routeSheetOpen={!useSidebar && sheetOpen && !navigating}>` — same logic.
+  - `<DataAttribution visible={!navigating && (useSidebar || !sheetOpen)}>` — on desktop the sidebar isolates the sheet from the bottom strip, so the attribution stays visible.
+
+### Why a `renderMapAndSharedChrome()` helper
+
+The map + the shared floating chrome render identically in both layouts; only the *parent container* differs (`<div className="relative flex-1">` on desktop, `<>` on mobile). Pulling them into an inline helper avoids duplicating 100+ lines of JSX across the two branches and keeps every prop wiring (live location, viewState, theme, …) in a single place.
+
+### Files touched
+
+- Updated: [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx), [src/components/StartButton.tsx](src/components/StartButton.tsx), [src/App.tsx](src/App.tsx).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.45 MB main chunk, CSS ~30.2 KB / gzip 6.8 KB, ~10 s)
