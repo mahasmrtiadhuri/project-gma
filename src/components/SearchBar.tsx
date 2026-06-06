@@ -43,7 +43,12 @@ export function SearchBar({
       <div
         className="gma-card relative flex flex-col rounded-2xl p-4"
         style={{
-          boxShadow: 'var(--gma-shadow-lg)',
+          // Custom strong elevation so the search card reads as the
+          // top-of-hierarchy primary surface. Stronger than the
+          // generic `--gma-shadow-lg` used by the route sheet (which
+          // sits second in the visual hierarchy).
+          boxShadow:
+            '0 20px 48px rgba(15, 23, 42, 0.18), 0 6px 16px rgba(15, 23, 42, 0.10)',
           overflow: 'visible',
         }}
       >

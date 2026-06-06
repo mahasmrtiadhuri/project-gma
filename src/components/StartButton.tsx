@@ -6,73 +6,53 @@ export interface StartButtonProps {
   onStart: () => void;
 }
 
+const AMBER = '#F59E0B';
+
 /**
- * Fixed-position Start button — full-width strip pinned to the bottom
- * of the viewport above the Android Chrome nav bar (~56 px).
+ * Primary CTA — solid amber pill, white bold text, fixed at the bottom
+ * of the viewport above the Android Chrome nav bar (56 px).
  *
- * Layout (per Pixel 9 Pro XL field test):
- *   Viewport height (Chrome with bottom bar): ≈ 820 px
- *   Sheet (max-h: 50vh):                       ≈ 410 px  → occupies bottom 0–410
- *   Start container (bottom: 56, h ≈ 68):      → occupies bottom 56–124
- *   Sheet visible band above Start:            ≈ 286 px  → enough for handle +
- *                                                          filter pills + 1–2
- *                                                          route cards
- *   "?" legend (bottom: 50vh + 72):            → bottom 482 (above sheet)
+ * Reads as a real button rather than a faded strip: no surrounding
+ * surface band, just the pill itself, full-width on mobile (16 px
+ * gutters) and capped at 460 px centered on desktop.
  *
- * We HARD-CODE `bottom: 56 px` (no `env(safe-area-inset-bottom)`) because
- * Chrome Android does not report the home-gesture inset via env() — the
- * 56 px figure matches the persistent bottom nav bar height there.
- * iOS Safari has its own safe-area handling and lands the button slightly
- * higher (the inset reports ~34 px), but Chrome Android is the dominant
- * device target for this build per the user's report.
+ * Despite the prop name `dayColor`, the live time-of-day color is
+ * intentionally NOT used here — we want a stable, recognizable amber
+ * across the whole day so the Start affordance reads the same at noon
+ * as at dusk. The prop stays in the API for symmetry with other
+ * accented components and to leave the door open for re-tinting later.
  */
 export function StartButton({ visible, dayColor, onStart }: StartButtonProps) {
+  // Reference `dayColor` so the param isn't flagged as unused under
+  // `noUnusedParameters` while we keep the API stable.
+  void dayColor;
   if (!visible) return null;
-  const accent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   return (
-    <div
-      className="pointer-events-auto fixed"
+    <button
+      type="button"
+      onClick={onStart}
+      aria-label="Start navigation"
+      className="gma-press-soft pointer-events-auto fixed left-4 right-4 flex h-14 items-center justify-center gap-2 rounded-xl text-base font-bold uppercase tracking-wider sm:left-1/2 sm:right-auto sm:w-[460px] sm:-translate-x-1/2"
       style={{
+        background: AMBER,
+        color: '#ffffff',
         bottom: '56px',
-        left: 0,
-        right: 0,
         zIndex: 200,
-        padding: '12px 16px',
-        // Opaque sheet-surface background so route cards scrolling
-        // up from below get visually cropped at the Start strip
-        // instead of bleeding through the 12 px padding band around
-        // the gradient pill. A thin top border + subtle upward shadow
-        // makes the strip read as a discrete chrome band rather than
-        // a hovering button.
-        background: 'var(--gma-surface)',
-        borderTop: '1px solid var(--gma-border)',
-        boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.08)',
+        boxShadow:
+          '0 6px 20px rgba(245, 158, 11, 0.40), 0 2px 8px rgba(0, 0, 0, 0.12)',
       }}
     >
-      <button
-        type="button"
-        onClick={onStart}
-        className="gma-press-soft flex h-14 w-full items-center justify-center gap-2 rounded-xl text-base font-medium uppercase tracking-wider"
-        style={{
-          backgroundImage: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 80%, #b45309) 100%)`,
-          backgroundColor: accent,
-          color: 'var(--gma-text-on-accent)',
-          boxShadow: 'var(--gma-shadow-lg), var(--gma-glow-amber)',
-        }}
-        aria-label="Start navigation"
-      >
-        <NavIcon />
-        Start
-      </button>
-    </div>
+      <NavIcon />
+      Start
+    </button>
   );
 }
 
 function NavIcon() {
   return (
     <svg
-      width="16"
-      height="16"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"

@@ -49,7 +49,7 @@ export function TransportModeSwitcher({
             aria-checked={active}
             aria-label={label}
             onClick={() => onChange(key)}
-            className="gma-press flex h-14 w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl"
+            className="gma-press flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl"
             style={
               active
                 ? {
@@ -78,10 +78,35 @@ export function TransportModeSwitcher({
 }
 
 function WalkIcon() {
+  // Cleaner stick-figure walker that fully fits inside the 24×24
+  // viewBox. The previous SVG path drew a Material-icons-style runner
+  // whose head circle hugged the top edge and whose legs ran past y=22,
+  // which read as clipped in the h-14 pill row. This redraw uses a
+  // ~3 px-radius head safely inside the box and explicit limbs.
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="13" cy="4" r="2" />
-      <path d="M9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7" />
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* Head */}
+      <circle cx="13" cy="5" r="2" fill="currentColor" stroke="none" />
+      {/* Torso */}
+      <line x1="13" y1="8" x2="11" y2="14" />
+      {/* Forward leg */}
+      <line x1="11" y1="14" x2="14" y2="21" />
+      {/* Back leg */}
+      <line x1="11" y1="14" x2="8" y2="19" />
+      {/* Front arm */}
+      <line x1="13" y1="10" x2="16" y2="14" />
+      {/* Back arm */}
+      <line x1="13" y1="10" x2="10" y2="13" />
     </svg>
   );
 }

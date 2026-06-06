@@ -21,7 +21,6 @@ import { DataAttribution } from './components/DataAttribution';
 import { Toast } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
 import { StartButton } from './components/StartButton';
-import { ColorLegendButton } from './components/ColorLegendButton';
 import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
 import { useWeatherData } from './hooks/useWeatherData';
@@ -1243,17 +1242,6 @@ export default function App() {
         }
         dayColor={daylight.color}
         onStart={handleStartNavigation}
-      />
-
-      {/* "?" tooltip explaining route polyline colors — visible only
-       * when a colored route is actually on the map. */}
-      <ColorLegendButton
-        visible={
-          !navigating &&
-          sheetOpen &&
-          coloredSegments != null &&
-          coloredSegments.length > 0
-        }
       />
 
       <Toast message={toastMessage} />

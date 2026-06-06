@@ -311,7 +311,10 @@ export function RouteSheet({
         <InlineRouteLegend mode={legendMode} snow={legendSnow} />
       )}
 
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-4 pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none]">
+      {/* `pl-4 pr-16` reserves 64 px on the right (12 px right-3 inset
+       * + 44 px close button + ≥ 8 px breathing room) so the active
+       * filter pill (e.g. SUNNY) doesn't collide with the X. */}
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-3 pl-4 pr-16 pt-1 [-ms-overflow-style:none] [scrollbar-width:none]">
         {visibleFilters.map((mode) => {
           const meta = FILTER_META[mode];
           const active = mode === filterMode;
@@ -1102,39 +1105,76 @@ interface InlineRouteLegendProps {
  */
 function InlineRouteLegend({ mode, snow }: InlineRouteLegendProps) {
   const variant = pickLegendVariant(mode, snow);
+  const [expanded, setExpanded] = useState(false);
   return (
-    <div
-      className="mx-4 mb-2 flex shrink-0 items-center gap-2 rounded-full border px-3 py-1"
-      style={{
-        borderColor: 'var(--gma-border)',
-        background: 'var(--gma-input-bg)',
-      }}
-      aria-label={variant.ariaLabel}
-    >
-      <span
-        className="text-[10px] uppercase tracking-[0.16em]"
+    <div className="mx-4 mb-2 shrink-0">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-label={variant.ariaLabel}
+        className="flex w-full items-center justify-between gap-2 rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-[var(--gma-text-secondary)]"
         style={{
-          color: variant.leftColor,
+          borderColor: 'var(--gma-border)',
+          background: 'var(--gma-input-bg)',
           fontFamily: 'var(--font-data)',
         }}
       >
-        {variant.leftLabel}
-      </span>
-      <span
-        className="block h-2 flex-1 rounded-full"
-        style={{ background: variant.gradient }}
-        aria-hidden="true"
-      />
-      <span
-        className="text-[10px] uppercase tracking-[0.16em]"
-        style={{
-          color: variant.rightColor,
-          fontFamily: 'var(--font-data)',
-        }}
-      >
-        {variant.rightLabel}
-      </span>
+        <span>Route colors</span>
+        <LegendChevron open={expanded} />
+      </button>
+      {expanded && (
+        <div className="mt-1.5 flex items-center gap-2 px-3">
+          <span
+            className="text-[10px] uppercase tracking-[0.16em]"
+            style={{
+              color: variant.leftColor,
+              fontFamily: 'var(--font-data)',
+            }}
+          >
+            {variant.leftLabel}
+          </span>
+          <span
+            className="block h-2 flex-1 rounded-full"
+            style={{ background: variant.gradient }}
+            aria-hidden="true"
+          />
+          <span
+            className="text-[10px] uppercase tracking-[0.16em]"
+            style={{
+              color: variant.rightColor,
+              fontFamily: 'var(--font-data)',
+            }}
+          >
+            {variant.rightLabel}
+          </span>
+        </div>
+      )}
     </div>
+  );
+}
+
+function LegendChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      style={{
+        transform: open ? 'rotate(180deg)' : 'none',
+        transition: 'transform 200ms',
+      }}
+    >
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

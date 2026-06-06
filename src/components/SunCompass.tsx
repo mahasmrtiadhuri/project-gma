@@ -75,10 +75,10 @@ export function SunCompass({
         // is full-width on mobile and would overlap the compass.
         (routeSheetOpen ? ' max-sm:hidden' : '')
       }
-      style={{ minWidth: '112px' }}
+      style={{ minWidth: '104px', boxShadow: 'var(--gma-shadow-sm)' }}
       aria-label="Sun position and data sources"
     >
-      <div className="mx-auto h-[70px] w-[70px] sm:h-[80px] sm:w-[80px]">
+      <div className="mx-auto h-[70px] w-[70px] sm:h-[64px] sm:w-[64px]">
         <svg viewBox="0 0 120 120" className="h-full w-full" aria-hidden="true">
           {/* Outer disc */}
           <circle

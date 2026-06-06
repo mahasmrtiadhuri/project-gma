@@ -3405,3 +3405,35 @@ Ten-item pass covering smooth GPS rendering, follow-cam interaction, sun-colorin
 
 - `tsc -b` clean
 - `vite build` clean (~1.45 MB main chunk, CSS ~29.9 KB / gzip 6.8 KB, ~10 s)
+
+---
+
+## 2026-06-06 — UI cleanup pass
+
+Seven-item visual polish pass.
+
+| # | Fix | File |
+|---|---|---|
+| 1 | **Start button — primary CTA, not a faded strip** — dropped the surrounding `var(--gma-surface)` band. Button is now a standalone pill: solid `#F59E0B`, white bold uppercase text, `h-14` (56 px), `font-bold tracking-wider`, custom amber-drop shadow `0 6px 20px rgba(245,158,11,0.40), 0 2px 8px rgba(0,0,0,0.12)`. Full-width on mobile (`left-4 right-4`), max-width 460 px centered on desktop (`sm:left-1/2 sm:w-[460px] sm:-translate-x-1/2`). `dayColor` prop is intentionally unused (stable amber across the day) but kept on the API for symmetry. | [src/components/StartButton.tsx](src/components/StartButton.tsx) |
+| 2 | **Street overlay hidden until route is showing** — GMACanvas's `street-sun-overlay` layer now gated on `selectedRoute` in addition to `streetExposures.length > 0`. Initial map load + autocomplete phase paint a clean stock map; the orange/blue street stripes only appear when a route is on the map. | [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) |
+| 3 | **Collapsible inline legend** — `InlineRouteLegend` in RouteSheet is now a `<button>` that toggles a "Route colors" header to show/hide the gradient strip. Default collapsed so the legend doesn't dominate the sheet header. Chevron rotates 180° on open. | [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) |
+| 4 | **SUNNY ↔ X spacing** — filter pill row's right padding bumped `px-4` → `pl-4 pr-16`. The 64 px right gutter (12 px right-3 inset + 44 px close button + ≥ 8 px breathing room) keeps the active filter pill clear of the X. | [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) |
+| 5 | **SunCompass smaller + softer** — desktop disc `sm:h-[80px] sm:w-[80px]` → `sm:h-[64px] sm:w-[64px]`. Mobile stays 70 px. Card shadow downgraded from `--gma-shadow-md` (gma-card default) to `--gma-shadow-sm` so it reads as supporting data, not a primary surface. `minWidth` 112 px → 104 px to match. | [src/components/SunCompass.tsx](src/components/SunCompass.tsx) |
+| 6 | **WALK icon visibility** — TransportModeSwitcher button height `h-14` → `h-16`, gap `gap-0.5` → `gap-1`. Walk icon SVG redrawn from a complex Material-style runner path to an explicit stick figure (head circle at y=5 r=2, torso/legs/arms as `<line>` strokes), fully inside the 24×24 viewBox. Cleaner render at any size and no edge clipping. | [src/components/TransportModeSwitcher.tsx](src/components/TransportModeSwitcher.tsx) |
+| 7 | **Visual hierarchy** — SearchBar shadow upgraded from generic `--gma-shadow-lg` to a custom `0 20px 48px rgba(15,23,42,0.18), 0 6px 16px rgba(15,23,42,0.10)`. RouteSheet keeps `--gma-shadow-lg`. SunCompass downgraded to `--gma-shadow-sm`. Result: search reads as primary, sheet as secondary, supporting widgets as tertiary. | [src/components/SearchBar.tsx](src/components/SearchBar.tsx) |
+
+### Removed
+
+- [src/components/ColorLegendButton.tsx](src/components/ColorLegendButton.tsx) — floating "?" tooltip deleted. The collapsible inline legend in the sheet covers the same need without floating chrome.
+- [src/components/RouteLegend.tsx](src/components/RouteLegend.tsx) — pre-existing standalone floating legend, already unmounted. Deleting the dead file.
+- [src/App.tsx](src/App.tsx) — `ColorLegendButton` import + mount removed.
+
+### Files touched
+
+- Updated: [src/components/StartButton.tsx](src/components/StartButton.tsx), [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx), [src/components/SunCompass.tsx](src/components/SunCompass.tsx), [src/components/TransportModeSwitcher.tsx](src/components/TransportModeSwitcher.tsx), [src/components/SearchBar.tsx](src/components/SearchBar.tsx), [src/App.tsx](src/App.tsx).
+- Deleted: `src/components/ColorLegendButton.tsx`, `src/components/RouteLegend.tsx`.
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.45 MB main chunk, CSS ~29.9 KB / gzip 6.8 KB, ~10 s)

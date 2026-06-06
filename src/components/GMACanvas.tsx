@@ -283,7 +283,15 @@ export function GMACanvas({
     // previous dark base; needed more presence here. Each segment's
     // .color is derived from its continuous .exposure value, the SAME
     // value the route scorer samples to compute the comfort %.
-    if (!navigating && streetExposures && streetExposures.length > 0) {
+    // Street sun overlay only paints when the user has actually picked
+    // a route — keeps the initial map free of orange/blue stripes and
+    // reads as a stock map until the routing flow begins.
+    if (
+      !navigating &&
+      selectedRoute &&
+      streetExposures &&
+      streetExposures.length > 0
+    ) {
       out.push(
         new PathLayer<StreetSegmentExposure>({
           id: 'street-sun-overlay',
