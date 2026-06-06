@@ -139,7 +139,13 @@ export interface GMACanvasProps {
   buildingShadows: BuildingShadow[];
   mapView: MapView;
   viewState: MapViewState;
-  onViewStateChange: (next: MapViewState) => void;
+  /**
+   * Receives the new viewState plus a `userInteracting` flag — true
+   * when this update came from a drag/pinch/scroll, false when it
+   * came from a programmatic flight (e.g. follow-cam). App.tsx uses
+   * this to pause the follow-cam when the user explicitly pans.
+   */
+  onViewStateChange: (next: MapViewState, userInteracting: boolean) => void;
   /**
    * Glass-glare hotspots projected from glass-clad buildings. Rendered
    * as 15 m orange-red dots between the shadow + street-overlay layers
@@ -464,36 +470,37 @@ export function GMACanvas({
         }),
       );
 
-      // Heading chevron — only when we have a real compass heading
-      // from the geolocation watch (typically only true on mobile
-      // devices that have a compass + the user is moving).
+      // Heading chevron — ALWAYS rendered (no `headingDeg != null`
+      // gate). Caller is responsible for supplying a sensible heading;
+      // App.tsx computes one from movement bearing when the geolocation
+      // API doesn't expose `position.coords.heading`. Falls back to 0°
+      // (north-up) when no bearing is known yet.
+      //
       // deck.gl IconLayer `getAngle` rotates COUNTERCLOCKWISE in
       // degrees, so negate the compass heading (which is clockwise
       // from north) to get the chevron's nose pointing in travel
       // direction.
-      if (liveLocation.headingDeg != null) {
-        out.push(
-          new IconLayer<{
-            lat: number;
-            lng: number;
-            headingDeg?: number | null;
-          }>({
-            id: 'live-location-heading',
-            data: liveData,
-            getPosition: (d) => [d.lng, d.lat],
-            getIcon: () => HEADING_CHEVRON_ICON,
-            getSize: 38,
-            sizeUnits: 'pixels',
-            getAngle: (d) => -(d.headingDeg ?? 0),
-            pickable: false,
-            parameters: { depthCompare: 'always', depthWriteEnabled: false },
-            updateTriggers: {
-              getPosition: [liveLocation.lng, liveLocation.lat],
-              getAngle: liveLocation.headingDeg,
-            },
-          }),
-        );
-      }
+      out.push(
+        new IconLayer<{
+          lat: number;
+          lng: number;
+          headingDeg?: number | null;
+        }>({
+          id: 'live-location-heading',
+          data: liveData,
+          getPosition: (d) => [d.lng, d.lat],
+          getIcon: () => HEADING_CHEVRON_ICON,
+          getSize: 38,
+          sizeUnits: 'pixels',
+          getAngle: (d) => -(d.headingDeg ?? 0),
+          pickable: false,
+          parameters: { depthCompare: 'always', depthWriteEnabled: false },
+          updateTriggers: {
+            getPosition: [liveLocation.lng, liveLocation.lat],
+            getAngle: liveLocation.headingDeg,
+          },
+        }),
+      );
 
       out.push(
         new ScatterplotLayer<{ lat: number; lng: number }>({
@@ -574,8 +581,15 @@ export function GMACanvas({
         controller
         layers={layers}
         getTooltip={getTooltip}
-        onViewStateChange={({ viewState: next }) => {
-          onViewStateChange(next as MapViewState);
+        onViewStateChange={({ viewState: next, interactionState }) => {
+          // deck.gl reports `isDragging` / `isPanning` / `isZooming`
+          // while a pointer-driven gesture is in flight. We treat
+          // any of those as a user interaction.
+          const userInteracting =
+            !!interactionState?.isDragging ||
+            !!interactionState?.isPanning ||
+            !!interactionState?.isZooming;
+          onViewStateChange(next as MapViewState, userInteracting);
         }}
       />
       {!apiKey && <MissingKeyOverlay />}

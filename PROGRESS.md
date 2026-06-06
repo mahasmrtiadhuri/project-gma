@@ -3357,3 +3357,51 @@ Both pins stay visible throughout navigation regardless of how far the follow-ca
 
 - `tsc -b` clean
 - `vite build` clean (~1.45 MB main chunk, ~21 s)
+
+---
+
+## 2026-06-06 — Navigation polish + comfort scoring calibration
+
+Ten-item pass covering smooth GPS rendering, follow-cam interaction, sun-coloring accuracy, and the navigation chrome.
+
+### Navigation
+
+| # | Fix | File |
+|---|---|---|
+| 1 | **Smooth GPS dot** — new `useAnimatedLocation` hook linearly interpolates between successive GPS fixes over 1000 ms via `requestAnimationFrame`. The displayed coord glides instead of teleporting. First fix snaps; subsequent fixes interpolate from current displayed position (no mid-step jump when a fresh fix arrives during animation). Route-progress + nextTurn still read the RAW coord — animation is render-only. | [src/hooks/useAnimatedLocation.ts](src/hooks/useAnimatedLocation.ts) |
+| 2 | **User pan/zoom freedom** — `followCamActive` state in App.tsx. `GMACanvas.onViewStateChange` now forwards a `userInteracting` flag (true when deck.gl's `interactionState.isDragging \|\| isPanning \|\| isZooming`). Any user gesture flips `followCamActive` to false and starts a 5 s `setTimeout`; when the timer fires (no further interaction), it flips back to true and the camera resumes following. Follow-cam effect short-circuits when `followCamActive` is false. | [src/App.tsx](src/App.tsx), [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) |
+| 3 | **Direction arrow always** — the chevron IconLayer is no longer gated on `headingDeg != null`. App.tsx computes a fallback heading: GPS-reported heading when present, else movement bearing between successive raw GPS coords (squelched when the user is stationary — Δ² < 2e-11 deg², ~0.5 m). Last-known bearing is cached so the chevron never reverts to north-up after a single stationary fix. | [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx), [src/App.tsx](src/App.tsx) |
+| 4 | **Smoother camera follow** — follow-cam `transitionDuration` bumped 200 → 500 ms per spec. Bearing now reads from the COMPUTED heading so the camera rotates with travel direction even when GPS heading is null. | [src/App.tsx](src/App.tsx) |
+
+### Comfort scoring calibration
+
+| # | Fix | File |
+|---|---|---|
+| 5 | **Tree canopy over-sensitivity** — `TREE_RADIUS_M` 15 → 8 m. Added `TREE_MAX_USEFUL_SUN_ELEVATION_DEG = 60`: a tree only shades a segment when the sun is below 60° elevation (high sun throws near-vertical shadows that miss the sidewalk). | [src/lib/routeColoring.ts](src/lib/routeColoring.ts) |
+| 6 | **Building shadow accuracy** — added `MIN_SHADOW_CASTING_HEIGHT_M = 10` to `projectShadows`. Buildings under 10 m generate no shadow polygons. (The "shadow reaches segment" condition is already implicit in the polygon-containment test — if a midpoint sits inside the displaced footprint polygon, the shadow does in fact reach it.) | [src/lib/buildingShadows.ts](src/lib/buildingShadows.ts) |
+| 7 | **Bearing fallback threshold** — `BEARING_SUNNY_THRESHOLD = 0.3` replaces the implicit `> 0` cutoff. A segment heading within ~72° of the sun bearing (cos > 0.3) reads as sunny; outside that, classified as `low-sun-angle`. Prevents diagonally-oriented streets from getting marked fully sunny when the sun is glancing off the building face. | [src/lib/routeColoring.ts](src/lib/routeColoring.ts) |
+
+### UI
+
+| # | Fix | File |
+|---|---|---|
+| 8 | **Larger next-turn pill** — rewritten with `text-lg font-semibold` instruction, `text-sm` distance below, and a `h-1.5` colored stripe across the top of the pill matching the upcoming segment color (orange = direct sun ahead, blue = shade, green = trees, red = glare). The pill itself is `gma-card`, full-width-on-mobile, with the same `gma-shadow-lg`. | [src/components/NextTurnIndicator.tsx](src/components/NextTurnIndicator.tsx) |
+| 9 | **Re-center button** — new circular crosshair button, fixed bottom-right at `bottom: calc(env+11rem)` (stacks above MapViewSwitcher → NextTurnIndicator). Visible only when `navigating && !followCamActive`. Tapping calls `resumeFollowCam` which clears the auto-resume timer and flips state back to true. | [src/components/RecenterButton.tsx](src/components/RecenterButton.tsx) |
+| 10 | **Live remaining time/distance** — verified the existing `remainingDistanceM` / `remainingDurationS` already recompute from `routeProgress` on every new fix. No code change needed; the navigation header reads live values. | (no change) |
+
+### Implementation notes
+
+- `useAnimatedLocation` uses a `useRef<Coord>` mirror of the displayed coord so the rAF loop can read the latest value without re-running the effect. Cancel-and-restart pattern: each new target coord cancels the in-flight `requestAnimationFrame` and begins a fresh interpolation from the current displayed position.
+- The bearing fallback in App.tsx caches the last computed heading in a `useRef` so a stationary fix doesn't reset the chevron to 0°.
+- The `onViewStateChange` callback signature changed (now `(next, userInteracting) => void`). GMACanvas computes `userInteracting` inline from deck.gl's `interactionState`; no breaking call-sites elsewhere.
+- Upcoming-segment color is `useMemo`-d on `[navigating, coloredSegments, routeProgress.nearestVertexIdx]` so the NextTurnIndicator stripe updates as the user walks but doesn't re-render on every irrelevant state tick.
+
+### Files touched
+
+- New: [src/hooks/useAnimatedLocation.ts](src/hooks/useAnimatedLocation.ts), [src/components/RecenterButton.tsx](src/components/RecenterButton.tsx).
+- Updated: [src/lib/routeColoring.ts](src/lib/routeColoring.ts), [src/lib/buildingShadows.ts](src/lib/buildingShadows.ts), [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx), [src/components/NextTurnIndicator.tsx](src/components/NextTurnIndicator.tsx), [src/App.tsx](src/App.tsx).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.45 MB main chunk, CSS ~29.9 KB / gzip 6.8 KB, ~10 s)

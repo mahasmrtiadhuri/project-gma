@@ -27,6 +27,12 @@ export interface BuildingShadow {
 
 const MAX_SHADOW_M = 100;
 const MIN_USEFUL_ELEVATION_DEG = 5;
+// Buildings under this height project shadows shorter than typical
+// sidewalk + setback width at every meaningful sun elevation, so they
+// can never realistically shade a route segment. Skipping them here
+// also caps the projected-polygon count when an Overpass response has
+// thousands of small residential footprints.
+const MIN_SHADOW_CASTING_HEIGHT_M = 10;
 
 // Conversions valid at NYC latitude (~40.76°N). Good to ~0.3% over the
 // Midtown bbox; cheap and well-suited to this approximation.
@@ -46,20 +52,22 @@ export function projectShadows(
   const sinDir = Math.sin(shadowDirRad);
   const cosDir = Math.cos(shadowDirRad);
 
-  return buildings.map((b) => {
-    const rawShadowM = b.height / Math.tan(elRad);
-    const shadowM = Math.min(MAX_SHADOW_M, rawShadowM);
-    const dxM = shadowM * sinDir;
-    const dyM = shadowM * cosDir;
-    const dxDeg = dxM / M_PER_DEG_LNG;
-    const dyDeg = dyM / M_PER_DEG_LAT;
+  return buildings
+    .filter((b) => b.height >= MIN_SHADOW_CASTING_HEIGHT_M)
+    .map((b) => {
+      const rawShadowM = b.height / Math.tan(elRad);
+      const shadowM = Math.min(MAX_SHADOW_M, rawShadowM);
+      const dxM = shadowM * sinDir;
+      const dyM = shadowM * cosDir;
+      const dxDeg = dxM / M_PER_DEG_LNG;
+      const dyDeg = dyM / M_PER_DEG_LAT;
 
-    const polygon = b.footprint.map(
-      ([lng, lat]): [number, number] => [lng + dxDeg, lat + dyDeg],
-    );
+      const polygon = b.footprint.map(
+        ([lng, lat]): [number, number] => [lng + dxDeg, lat + dyDeg],
+      );
 
-    return { buildingId: b.id, polygon };
-  });
+      return { buildingId: b.id, polygon };
+    });
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlyToInterpolator, type MapViewState } from '@deck.gl/core';
 import { GMACanvas } from './components/GMACanvas';
 import { MapViewSwitcher, type MapView } from './components/MapViewSwitcher';
@@ -29,6 +29,8 @@ import { useCurrentLocation } from './hooks/useCurrentLocation';
 import { useOverpassData } from './hooks/useOverpassData';
 import { useSolarAPI } from './hooks/useSolarAPI';
 import { useLiveLocation } from './hooks/useLiveLocation';
+import { useAnimatedLocation } from './hooks/useAnimatedLocation';
+import { RecenterButton } from './components/RecenterButton';
 import { reverseGeocode } from './lib/geocoding';
 import {
   computeNextTurn,
@@ -37,6 +39,7 @@ import {
 } from './lib/navigation';
 import type { Building } from './lib/overpass';
 import {
+  bearingDegrees,
   fetchCandidateRoutes,
   scoreAndRankRoutes,
   type CandidateRoute,
@@ -131,6 +134,92 @@ export default function App() {
   // Live geolocation watch is gated on `navigating` so we don't drain
   // battery / spam the permission prompt outside of an active route.
   const liveLocation = useLiveLocation(navigating);
+
+  // Animated GPS coord. `useLiveLocation` emits roughly 1 fix per second;
+  // wrapping it in `useAnimatedLocation` linearly interpolates the
+  // displayed position over 1 s using requestAnimationFrame so the
+  // chevron glides rather than teleporting between fixes. The route
+  // progress + nextTurn computations still read the RAW coord
+  // (`liveLocation.coord`) — that's the source-of-truth GPS reading.
+  const animatedCoord = useAnimatedLocation(liveLocation.coord, 1000);
+
+  // Heading fallback. The geolocation API often returns
+  // `position.coords.heading === null` (most desktop browsers, slow
+  // movement, indoors). Derive a fallback bearing from the last two
+  // raw GPS coords so the chevron always points roughly in the travel
+  // direction.
+  const prevCoordRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastHeadingRef = useRef<number | null>(null);
+  const computedHeading = useMemo<number | null>(() => {
+    if (liveLocation.heading != null) {
+      lastHeadingRef.current = liveLocation.heading;
+      return liveLocation.heading;
+    }
+    if (liveLocation.coord && prevCoordRef.current) {
+      const prev = prevCoordRef.current;
+      const cur = liveLocation.coord;
+      // Ignore noise: only update bearing when the new fix is at
+      // least ~0.5 m away from the previous one. Keeps the chevron
+      // from spinning while the user is stationary.
+      const dLat = cur.lat - prev.lat;
+      const dLng = cur.lng - prev.lng;
+      if (dLat * dLat + dLng * dLng > 2e-11) {
+        const h = bearingDegrees(prev, cur);
+        lastHeadingRef.current = h;
+        return h;
+      }
+    }
+    return lastHeadingRef.current ?? 0;
+  }, [liveLocation.coord?.lat, liveLocation.coord?.lng, liveLocation.heading]);
+
+  // Track raw GPS for the bearing fallback. Updated in a useEffect (not
+  // inside the useMemo) so the previous coord reflects the value used
+  // for the *prior* bearing computation, not the current one.
+  useEffect(() => {
+    if (liveLocation.coord) {
+      prevCoordRef.current = liveLocation.coord;
+    }
+  }, [liveLocation.coord?.lat, liveLocation.coord?.lng]);
+
+  // Follow-cam control. `followCamActive` toggles whether each new GPS
+  // fix snaps the camera back to the user. User pan/zoom flips it
+  // off; a 5 s no-interaction timer flips it back on so the camera
+  // resumes following. The Re-center button forces it back on too.
+  const [followCamActive, setFollowCamActive] = useState(true);
+  const followCamResumeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Reset to active whenever a fresh nav session starts.
+    if (navigating) setFollowCamActive(true);
+  }, [navigating]);
+
+  const pauseFollowCam = useCallback(() => {
+    setFollowCamActive(false);
+    if (followCamResumeTimerRef.current != null) {
+      window.clearTimeout(followCamResumeTimerRef.current);
+    }
+    followCamResumeTimerRef.current = window.setTimeout(() => {
+      setFollowCamActive(true);
+      followCamResumeTimerRef.current = null;
+    }, 5_000);
+  }, []);
+
+  const resumeFollowCam = useCallback(() => {
+    if (followCamResumeTimerRef.current != null) {
+      window.clearTimeout(followCamResumeTimerRef.current);
+      followCamResumeTimerRef.current = null;
+    }
+    setFollowCamActive(true);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (followCamResumeTimerRef.current != null) {
+        window.clearTimeout(followCamResumeTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // Track the actual window dimensions so the no-candidates Overpass
   // bbox covers the entire visible map area (not a fixed-pad square
@@ -903,6 +992,26 @@ export default function App() {
       ? Math.max(0, routeProgress.totalM - routeProgress.traveledM)
       : (selectedRoute?.distanceMeters ?? 0);
 
+  // Comfort color of the segment the user is about to walk through —
+  // drives the colored stripe on top of the NextTurnIndicator pill.
+  // `nearestVertexIdx` is the polyline vertex closest to the live
+  // position; the segment AHEAD of it has index `nearestVertexIdx`
+  // (segments are 1:1 with edges, so segment i lies between vertex i
+  // and i+1). Falls back to the first segment before the first GPS fix
+  // arrives, and clamps at the last segment near the destination.
+  const upcomingSegmentColor = useMemo<
+    [number, number, number, number] | null
+  >(() => {
+    if (!navigating || !coloredSegments || coloredSegments.length === 0) {
+      return null;
+    }
+    const idx =
+      routeProgress != null
+        ? Math.min(routeProgress.nearestVertexIdx, coloredSegments.length - 1)
+        : 0;
+    return coloredSegments[idx]?.color ?? null;
+  }, [navigating, coloredSegments, routeProgress?.nearestVertexIdx]);
+
   const remainingDurationS = selectedRoute
     ? selectedRoute.distanceMeters > 0
       ? selectedRoute.durationSeconds *
@@ -911,25 +1020,28 @@ export default function App() {
     : 0;
 
   // ---- follow-cam --------------------------------------------------
-  // While navigating, every new live geolocation fix re-centers the map
-  // on the user. 200 ms transition gives a smooth, walking-pace chase
-  // that keeps up with brisk movement without feeling laggy. Pitch 0
-  // so the chase view works regardless of which basemap the user is
-  // on (2D / 3D / Satellite) — a 55° tilt looks wrong on the flat
-  // CartoDB raster, and a tilt-on-3D-only branch would surprise the
-  // user the first time they switched mid-route. Zoom 17 (was 18) so a
-  // larger stretch of the route is in view, which is what makes the
-  // per-segment sun coloring readable while walking. Bearing follows
-  // device heading when reported.
+  // While navigating AND `followCamActive`, every new live geolocation
+  // fix re-centers the map on the user with a 500 ms FlyToInterpolator
+  // transition (was 200 ms — bumped per spec so the camera glides
+  // rather than snapping). Pitch 0 keeps the chase consistent across
+  // 2D/3D/satellite. Zoom 17 keeps a wider band of the route in view.
+  // Bearing follows the COMPUTED heading (GPS heading when available,
+  // else movement bearing) so the chevron's nose stays aligned with
+  // travel direction.
+  //
+  // When `followCamActive` is false (user has panned/zoomed), the
+  // effect short-circuits — the camera stays where the user left it
+  // until they tap the Re-center button or the 5 s no-interaction
+  // timer flips followCamActive back on.
   useEffect(() => {
-    if (!navigating || !liveLocation.coord) return;
+    if (!navigating || !liveLocation.coord || !followCamActive) return;
     setViewState({
       longitude: liveLocation.coord.lng,
       latitude: liveLocation.coord.lat,
       zoom: 17,
       pitch: 0,
-      bearing: liveLocation.heading ?? 0,
-      transitionDuration: 200,
+      bearing: computedHeading ?? 0,
+      transitionDuration: 500,
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
     // deps purposely exclude viewState — we drive the camera from live
@@ -940,7 +1052,8 @@ export default function App() {
     navigating,
     liveLocation.coord?.lat,
     liveLocation.coord?.lng,
-    liveLocation.heading,
+    computedHeading,
+    followCamActive,
   ]);
 
   const phaseDisplay =
@@ -958,14 +1071,22 @@ export default function App() {
         glareHotspots={glareHotspots}
         mapView={mapView}
         viewState={viewState}
-        onViewStateChange={setViewState}
+        onViewStateChange={(next, userInteracting) => {
+          setViewState(next);
+          // Pause follow-cam whenever the user explicitly drags or
+          // pinches the map. Auto-resumes after 5 s of no interaction
+          // — see `pauseFollowCam` for the timer.
+          if (navigating && userInteracting) {
+            pauseFollowCam();
+          }
+        }}
         liveLocation={
-          liveLocation.coord
+          animatedCoord
             ? {
-                lat: liveLocation.coord.lat,
-                lng: liveLocation.coord.lng,
+                lat: animatedCoord.lat,
+                lng: animatedCoord.lng,
                 accuracyM: liveLocation.accuracyM,
-                headingDeg: liveLocation.heading,
+                headingDeg: computedHeading,
               }
             : null
         }
@@ -1066,7 +1187,14 @@ export default function App() {
             remainingDurationS={remainingDurationS}
             onStop={handleStopNavigation}
           />
-          <NextTurnIndicator nextTurn={nextTurn} />
+          <NextTurnIndicator
+            nextTurn={nextTurn}
+            upcomingColor={upcomingSegmentColor}
+          />
+          <RecenterButton
+            visible={!followCamActive}
+            onRecenter={resumeFollowCam}
+          />
         </>
       )}
 

@@ -25,7 +25,18 @@ import { computeVenturiAmplifier } from './venturi';
 import { nearestGlareHotspot, type GlareHotspot } from './glassGlare';
 
 const ROUTE_ALTITUDE_M = 2;
-const TREE_RADIUS_M = 15;
+// Trees only shade a segment when (a) the canopy is genuinely near the
+// segment AND (b) the sun is low enough that the leaf canopy actually
+// projects onto the sidewalk. At noon-ish (>60° elevation) sparse
+// street trees throw near-vertical shadows that miss the sidewalk
+// entirely, so the prior 15 m all-day rule was over-claiming shade.
+const TREE_RADIUS_M = 8;
+const TREE_MAX_USEFUL_SUN_ELEVATION_DEG = 60;
+// Bearing fallback: a segment heading within ~72° of the sun bearing
+// (cos > 0.3) reads as sunny. The previous `cos > 0` (within 90°) was
+// over-claiming sun on diagonally-oriented streets where the sun glances
+// off the building face rather than landing on the sidewalk.
+const BEARING_SUNNY_THRESHOLD = 0.3;
 const SOLAR_SAMPLE_RADIUS_M = 300;
 // A roof getting > 50% of its theoretical max annual sunshine is "well
 // exposed" → adjacent sidewalk likely sunny. Lower → likely shaded.
@@ -433,8 +444,13 @@ export function classifyWithDiagnostics(
     trees && trees.length > 0
       ? findNearestTreeDistance(midLng, midLat, trees, TREE_NEAREST_SEARCH_RADIUS_M)
       : null;
+  // Tree canopy only counts when (i) there's a tree within
+  // TREE_RADIUS_M of the segment AND (ii) the sun is low enough that
+  // the canopy actually casts onto the sidewalk (elevation < 60°).
   const inTreeCanopy =
-    nearestTreeDistanceM != null && nearestTreeDistanceM < TREE_RADIUS_M;
+    nearestTreeDistanceM != null &&
+    nearestTreeDistanceM < TREE_RADIUS_M &&
+    sunElevationDeg < TREE_MAX_USEFUL_SUN_ELEVATION_DEG;
 
   const solarSample = findNearestSolarSample(midLng, midLat, solarSamples);
 
@@ -488,7 +504,7 @@ export function classifyWithDiagnostics(
       solarSample.exposureRatio > SOLAR_SUNNY_RATIO
         ? { exposure: 1, reason: 'sunny', via: 'solar' }
         : { exposure: 0, reason: 'low-sun-angle', via: 'solar' };
-  } else if (bearingFacing > 0) {
+  } else if (bearingFacing > BEARING_SUNNY_THRESHOLD) {
     classification = { exposure: 1, reason: 'sunny', via: 'bearing' };
   } else {
     classification = { exposure: 0, reason: 'low-sun-angle', via: 'bearing' };

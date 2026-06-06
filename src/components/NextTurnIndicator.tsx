@@ -2,51 +2,83 @@ import type { NextTurn } from '../lib/navigation';
 
 export interface NextTurnIndicatorProps {
   nextTurn: NextTurn | null;
+  /**
+   * Color (RGBA tuple) of the upcoming route segment, used to paint a
+   * thin top bar on the pill so the user can read at a glance what
+   * the section ahead feels like — orange = direct sun, blue = shade,
+   * green = tree canopy, red = glass glare. Null hides the bar.
+   */
+  upcomingColor?: [number, number, number, number] | null;
 }
 
 /**
- * Single-line "next turn" pill at the bottom of the screen. Renders
- * nothing when there's no turn data yet (no live position, no steps).
+ * Bottom-of-screen "next turn" pill — larger Google-Maps-style card
+ * showing the upcoming maneuver in bold, the distance to it below,
+ * and a colored stripe at the top of the pill matching the comfort
+ * color of the segment the user is about to walk through.
  *
  * Example output:
- *     ←  Turn left on W 43rd St   in 200 m
- *     ↑  Continue straight        in 60 m
- *     ✓  Arriving at destination  in 80 m
+ *   ┌─────────────────────────────────────────┐
+ *   │█████ amber stripe (upcoming = sunny) █████│
+ *   │  ←   Turn left on W 43rd St            │
+ *   │      in 200 m                          │
+ *   └─────────────────────────────────────────┘
  */
-export function NextTurnIndicator({ nextTurn }: NextTurnIndicatorProps) {
+export function NextTurnIndicator({
+  nextTurn,
+  upcomingColor,
+}: NextTurnIndicatorProps) {
   if (!nextTurn) return null;
   const arrow = pickArrow(nextTurn);
   const instructionText = stripHtml(nextTurn.instruction);
   const distLabel = formatDistance(nextTurn.distanceM);
+  const stripeColor = upcomingColor
+    ? `rgba(${upcomingColor[0]}, ${upcomingColor[1]}, ${upcomingColor[2]}, ${(upcomingColor[3] ?? 245) / 255})`
+    : null;
 
   return (
     <div
-      className="gma-card pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] left-1/2 z-30 flex h-14 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 items-center rounded-full px-5"
+      className="gma-card pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] left-1/2 z-30 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl"
       style={{ boxShadow: 'var(--gma-shadow-lg)' }}
       role="status"
       aria-live="polite"
     >
-      <div className="flex w-full items-center gap-3">
+      {/* Colored top bar — comfort signal for the upcoming segment.
+       * Same Tailwind-500 palette the route polyline uses, so visually
+       * "the bar matches the road ahead". */}
+      {stripeColor && (
+        <div
+          className="h-1.5 w-full"
+          style={{ background: stripeColor }}
+          aria-hidden="true"
+        />
+      )}
+
+      <div className="flex items-center gap-3 px-5 py-3">
         <span
-          className="text-xl leading-none"
+          className="text-2xl leading-none"
           style={{
-            color: nextTurn.isArrival ? 'rgb(16, 185, 129)' : 'rgb(59, 130, 246)',
-            minWidth: '20px',
+            color: nextTurn.isArrival
+              ? 'rgb(16, 185, 129)'
+              : 'rgb(59, 130, 246)',
+            minWidth: '28px',
             textAlign: 'center',
           }}
           aria-hidden="true"
         >
           {arrow}
         </span>
-        <span className="flex-1 truncate text-base text-[var(--gma-text-primary)]">
-          {instructionText}
-        </span>
-        <span
-          className="shrink-0 text-sm text-[var(--gma-text-secondary)]"
-          style={{ fontFamily: 'var(--font-data)' }}
-        >
-          in {distLabel}
-        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-lg font-semibold text-[var(--gma-text-primary)]">
+            {instructionText}
+          </div>
+          <div
+            className="mt-0.5 text-sm text-[var(--gma-text-secondary)]"
+            style={{ fontFamily: 'var(--font-data)' }}
+          >
+            in {distLabel}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -72,7 +104,6 @@ function pickArrow(turn: NextTurn): string {
 }
 
 function stripHtml(s: string): string {
-  // Routes API sometimes wraps street names in <b>…</b> tags. Strip them.
   return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
