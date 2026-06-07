@@ -22,3 +22,7 @@ declare module '*.frag' {
   const value: string;
   export default value;
 }
+
+// Compile-time-injected build date (see `define` in vite.config.ts).
+// Rendered by the bottom-right VersionLabel chrome.
+declare const __GMA_BUILD_DATE__: string;

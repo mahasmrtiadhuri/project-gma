@@ -15,3 +15,20 @@
   to = "/.netlify/functions/solar"
   status = 200
   force = true
+
+# Never let the CDN, the browser, or any intermediate cache the entry
+# HTML. The hashed JS / CSS / SW assets sit behind a fresh
+# `index.html` on every deploy, so guaranteeing the HTML is always
+# fetched live is how we break out of stuck-service-worker scenarios.
+# `must-revalidate` covers HTTP/1.1 intermediaries; `no-store` is the
+# strongest browser-side hint.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"
+
+# Same for the bare-root response.
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"

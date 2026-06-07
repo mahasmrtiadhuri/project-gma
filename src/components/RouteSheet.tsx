@@ -215,6 +215,14 @@ export interface RouteSheetProps {
    */
   windSpeedMph: number;
   /**
+   * Live solar elevation in degrees above horizon. ≤ 0 means the sun
+   * is below the horizon — every comfort badge for sun-aware filters
+   * switches to "No sun exposure · Night routing" and the
+   * fastest-vs-comfort temperature delta is suppressed, since at
+   * night every route is thermally identical.
+   */
+  sunElevationDeg: number;
+  /**
    * Embedded route-color legend rendered between the drag handle and
    * the filter pills. Replaces the previous floating RouteLegend
    * pill that overlapped the map. Null hides the strip.
@@ -250,6 +258,7 @@ export function RouteSheet({
   precipitationProbability,
   precipitationType,
   windSpeedMph,
+  sunElevationDeg,
   legendMode,
   legendSnow = false,
   embedded = false,
@@ -496,6 +505,7 @@ export function RouteSheet({
                 comfort,
                 filterMode,
                 windSpeedMph,
+                sunElevationDeg,
               );
               // Silence the now-unused relative percent helpers when
               // building feels-like badges — kept around for future
@@ -507,7 +517,7 @@ export function RouteSheet({
               void sunDirection;
 
               const getComfortBadge = (route: ScoredRoute): ComfortBadge | null =>
-                comfortBadgeFor(route, filterMode, windSpeedMph);
+                comfortBadgeFor(route, filterMode, windSpeedMph, sunElevationDeg);
 
               const conditionFor = (route: ScoredRoute): RouteCondition | null =>
                 isRainFilter && route.meanPrecipExposure != null
@@ -832,7 +842,24 @@ function comfortBadgeFor(
   route: ScoredRoute,
   filterMode: FilterMode,
   windSpeedMph: number,
+  sunElevationDeg: number,
 ): ComfortBadge | null {
+  // Night routing — short-circuit every sun-aware filter (and the
+  // sun-only "no preference" default). Wind / rain filters still
+  // surface real signal because they don't depend on the sun.
+  const isNight = sunElevationDeg <= 0;
+  const isSunAware =
+    filterMode === 'avoid-sun' ||
+    filterMode === 'avoid-both' ||
+    filterMode === 'sunniest' ||
+    filterMode === 'sunny-spot' ||
+    filterMode === 'no-preference';
+  if (isNight && isSunAware) {
+    return {
+      text: 'No sun exposure · Night routing',
+      color: 'var(--gma-text-secondary)',
+    };
+  }
   // Wind filter — show mph avoided / wind state.
   if (filterMode === 'avoid-wind') {
     if (windSpeedMph < 3) {
@@ -934,8 +961,22 @@ function computeFeelsLikeDelta(
   comfort: ScoredRoute,
   filterMode: FilterMode,
   windSpeedMph: number,
+  sunElevationDeg: number,
 ): FeelsLikeDelta | null {
   if (filterMode === 'no-preference') return null;
+
+  // Night routing — sun-aware comparisons are meaningless when the
+  // sun is below horizon (every route has identical zero sun exposure
+  // by definition). Return null so the comparison line + GMA-pick
+  // explanation suppress entirely; the wind branch below still fires
+  // for night wind shelter, which is real.
+  const isNight = sunElevationDeg <= 0;
+  const isSunAware =
+    filterMode === 'avoid-sun' ||
+    filterMode === 'avoid-both' ||
+    filterMode === 'sunniest' ||
+    filterMode === 'sunny-spot';
+  if (isNight && isSunAware) return null;
 
   // Wind: mph of headwind avoided. Needs current wind speed; below
   // 3 mph the delta is too small to advertise.

@@ -3546,3 +3546,66 @@ The "find me a sunny patio at 4 PM" use case from CLAUDE.md §5, now first-class
 
 - `tsc -b` clean
 - `vite build` clean (~1.46 MB main chunk, CSS ~30.4 KB / gzip 6.9 KB, ~15 s)
+
+---
+
+## 2026-06-07 — Night-mode comfort + cache busting + feature-visibility instrumentation
+
+Three-part pass.
+
+### 1. Night mode comfort scoring
+
+Three layers updated so that whenever the sun is below the horizon every sun-aware comfort signal reads "no thermal differentiation":
+
+- **HLCI scorer** ([src/lib/hlciRouter.ts](src/lib/hlciRouter.ts)): `composeHlciCost` now takes `sunElevationDeg`. When `sunElevationDeg ≤ 0` it zeroes both the `glareAvoidance × sunExposure` and `shadePreference × (1 − sunExposure)` terms — the route-coloring chain already returns exposure 0 at night, but doing it explicitly here makes the night semantics auditable from the scorer itself rather than implicit through the data pipeline. `scoreAndRankRoutes` passes `sun.elevationDeg` through.
+- **RouteSheet comfort badges** ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)): new `sunElevationDeg: number` prop. `comfortBadgeFor` now short-circuits every sun-aware filter (`avoid-sun`, `avoid-both`, `sunniest`, `sunny-spot`, `no-preference`) to `{ text: 'No sun exposure · Night routing', color: var(--gma-text-secondary) }` when night. Wind / rain filters still surface their real signals.
+- **`computeFeelsLikeDelta`** suppresses the fastest-vs-comfort temperature delta at night for sun-aware filters (returns `null`), so the comparison line + GMA-pick explanation stop showing temperature copy that would be meaningless under a zero-exposure denominator.
+- **Start toast** ([src/App.tsx](src/App.tsx) `buildStartToast`): new `sunElevationDeg` parameter; short-circuits to `🌙 No sun exposure · Night routing` at night for sun-aware filters.
+
+App.tsx wires `solar.elevationDeg` into both RouteSheet mounts (mobile floating + desktop sidebar) and the buildStartToast call.
+
+### 2. Cache busting
+
+PWA cache aggressiveness was leaving users on stale bundles. Four-pronged fix:
+
+- **`vite.config.ts`** — `BUILD_DATE = new Date().toISOString().slice(0, 10)` at module scope, used as both:
+  - `workbox.cacheId = 'gma-' + BUILD_DATE` — per-deploy cache namespace. Combined with the already-set `skipWaiting: true / clientsClaim: true / cleanupOutdatedCaches: true`, this guarantees the previous deploy's chunks get purged the moment a new index.html arrives. (`cleanupOutdatedCaches` already does that; the per-day `cacheId` is belt-and-suspenders insurance against any Workbox content-hash drift.)
+  - `define.__GMA_BUILD_DATE__ = JSON.stringify(BUILD_DATE)` — inlined at compile time so the bundle carries the build date as a string constant.
+- **`netlify.toml`** — added two `[[headers]]` rules:
+  ```toml
+  [[headers]]
+    for = "/*.html"
+    [headers.values]
+      Cache-Control = "no-store, no-cache, must-revalidate"
+
+  [[headers]]
+    for = "/"
+    [headers.values]
+      Cache-Control = "no-store, no-cache, must-revalidate"
+  ```
+  The hashed JS/CSS/SW assets are content-addressed and stay cacheable; only the entry HTML is forced live so the user always picks up the new chunk hashes from a fresh index.html.
+- **VersionLabel** ([src/components/VersionLabel.tsx](src/components/VersionLabel.tsx)) — tiny pointer-events-none chip at fixed bottom-right (`right: 8; bottom: 4; z: 5`) reading `v{__GMA_BUILD_DATE__}`. A glance at this against the deploy log tells the user whether they're seeing the latest build or a stuck cache. Mounted in both the desktop sidebar and mobile layout branches of App.tsx.
+- **`src/vite-env.d.ts`** — `declare const __GMA_BUILD_DATE__: string` so TypeScript recognizes the injected constant.
+
+### 3. Feature-visibility instrumentation
+
+To diagnose stuck-cache scenarios where a user reports "this button isn't there", App.tsx now logs a single mount-time line per feature so the user can confirm in DevTools whether the bundle that's actually running has the relevant code path:
+
+```js
+console.log(`[GMA] Build date: ${__GMA_BUILD_DATE__}`);
+console.log('[GMA] Feature: current location button mounted');
+console.log('[GMA] Feature: map tap handler active');
+console.log('[GMA] Feature: sunny spot filter available');
+```
+
+Run inside a single `useEffect(() => {…}, [])` on App mount. If a user reports any of these features missing, the first thing to check is whether the matching log line shows up alongside the expected build date.
+
+### Files touched
+
+- New: [src/components/VersionLabel.tsx](src/components/VersionLabel.tsx).
+- Updated: [src/lib/hlciRouter.ts](src/lib/hlciRouter.ts), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx), [src/App.tsx](src/App.tsx), [vite.config.ts](vite.config.ts), [netlify.toml](netlify.toml), [src/vite-env.d.ts](src/vite-env.d.ts).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.46 MB main chunk, CSS ~30.4 KB / gzip 6.9 KB, ~21 s). Note the Workbox runtime chunk hash changed (`9c191d2f` → `778a14ff`) confirming the new `cacheId` is taking effect.

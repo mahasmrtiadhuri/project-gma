@@ -22,6 +22,7 @@ import { Toast } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
 import { StartButton } from './components/StartButton';
 import { MapTapPopup } from './components/MapTapPopup';
+import { VersionLabel } from './components/VersionLabel';
 import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
 import { useWeatherData } from './hooks/useWeatherData';
@@ -130,6 +131,20 @@ export default function App() {
   // the hook. Applies `class="dark"` to <html>, which trips the dark
   // tokens in globals.css and crossfades the entire UI in 300 ms.
   const { theme, toggle: toggleTheme } = useTheme();
+
+  // ---- Feature-mount log ----------------------------------------------
+  // Single mount-time log set so the user can confirm — from
+  // DevTools — which build is actually running on their device and
+  // which interactive features the bundle includes. The first line
+  // doubles as a service-worker-staleness check (compare against the
+  // version chip in the bottom-right corner of the screen and the
+  // deploy log).
+  useEffect(() => {
+    console.log(`[GMA] Build date: ${__GMA_BUILD_DATE__}`);
+    console.log('[GMA] Feature: current location button mounted');
+    console.log('[GMA] Feature: map tap handler active');
+    console.log('[GMA] Feature: sunny spot filter available');
+  }, []);
 
   // Desktop / mobile breakpoint. ≥ 768 px gets the dedicated 380 px
   // sidebar layout (every chrome card stacked vertically, fully
@@ -1005,6 +1020,7 @@ export default function App() {
         selectedRoute,
         filterMode,
         weather?.windSpeedMph ?? 0,
+        solar.elevationDeg,
       ),
     );
     const target = originCenteredFitView(origin.point, selectedRoute.polyline);
@@ -1312,6 +1328,7 @@ export default function App() {
           precipitationProbability={weather?.precipitationProbability ?? 0}
           precipitationType={weather?.precipitationType ?? 'none'}
           windSpeedMph={weather?.windSpeedMph ?? 0}
+          sunElevationDeg={solar.elevationDeg}
           legendMode={
             coloredSegments && coloredSegments.length > 0
               ? coloringMode === 'wind'
@@ -1454,6 +1471,7 @@ export default function App() {
             precipitationProbability={weather?.precipitationProbability ?? 0}
             precipitationType={weather?.precipitationType ?? 'none'}
             windSpeedMph={weather?.windSpeedMph ?? 0}
+            sunElevationDeg={solar.elevationDeg}
             legendMode={
               coloredSegments && coloredSegments.length > 0
                 ? coloringMode === 'wind'
@@ -1482,6 +1500,7 @@ export default function App() {
         {renderMapAndSharedChrome()}
       </div>
       <Toast message={toastMessage} />
+      <VersionLabel />
     </div>
   ) : (
     // ─── MOBILE / NAVIGATION LAYOUT ────────────────────────────────
@@ -1491,6 +1510,7 @@ export default function App() {
     <div className="relative h-dvh w-dvw overflow-hidden bg-[var(--gma-bg)]">
       {renderMapAndSharedChrome()}
       <Toast message={toastMessage} />
+      <VersionLabel />
     </div>
   );
 }
@@ -1511,11 +1531,28 @@ function buildStartToast(
   route: ScoredRoute,
   filterMode: FilterMode,
   windSpeedMph: number,
+  sunElevationDeg: number,
 ): string {
   const MAX_DELTA = 15;
   const sunExposure = route.meanSunExposure ?? 0.5;
   const windExposure = route.meanWindExposure ?? 0;
   const precipExposure = route.meanPrecipExposure ?? 0;
+
+  // Night routing — every sun-aware filter collapses to the same
+  // "no sun exposure" toast since the sun is below the horizon.
+  // Rain/wind branches below still fire (they're real signals at
+  // night too) so we only short-circuit when the filter cares about
+  // the sun.
+  const isNight = sunElevationDeg <= 0;
+  const isSunAware =
+    filterMode === 'avoid-sun' ||
+    filterMode === 'avoid-both' ||
+    filterMode === 'sunniest' ||
+    filterMode === 'sunny-spot' ||
+    filterMode === 'no-preference';
+  if (isNight && isSunAware) {
+    return '🌙 No sun exposure · Night routing';
+  }
 
   if (filterMode === 'avoid-rain') {
     if (precipExposure < 0.3) return '💧 Sheltered from rain';

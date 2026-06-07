@@ -462,6 +462,7 @@ export function scoreAndRankRoutes(
       meanWindExposure,
       meanPrecipExposure,
       weights,
+      sun.elevationDeg,
     );
 
     return {
@@ -502,14 +503,23 @@ function composeHlciCost(
   meanWindExposure: number | null,
   meanPrecipExposure: number | null,
   weights: HlciWeights,
+  sunElevationDeg: number,
 ): number {
   const sunExposure = meanSunExposure ?? 0;
   const windExposure = meanWindExposure ?? 0;
   const precipExposure = meanPrecipExposure ?? 0;
-  const sunCost = weights.glareAvoidance * sunExposure;
+  // Night routing — sun is below the horizon, so neither the
+  // glare-avoidance penalty nor the shade-preference bonus carries
+  // physical meaning. Zero them out so every candidate scores equally
+  // for the thermal axes and the rankings collapse to wind / rain /
+  // duration. The routeColoring chain already returns exposure 0 at
+  // night so this is belt-and-suspenders, but doing it explicitly
+  // here makes the night semantics auditable from the scorer.
+  const isNight = sunElevationDeg <= 0;
+  const sunCost = isNight ? 0 : weights.glareAvoidance * sunExposure;
+  const shadeBonus = isNight ? 0 : weights.shadePreference * (1 - sunExposure);
   const windCost = weights.windAvoidance * windExposure;
   const rainCost = weights.rainAvoidance * precipExposure;
-  const shadeBonus = weights.shadePreference * (1 - sunExposure);
   return sunCost + windCost + rainCost + shadeBonus;
 }
 
