@@ -3609,3 +3609,55 @@ Run inside a single `useEffect(() => {…}, [])` on App mount. If a user reports
 
 - `tsc -b` clean
 - `vite build` clean (~1.46 MB main chunk, CSS ~30.4 KB / gzip 6.9 KB, ~21 s). Note the Workbox runtime chunk hash changed (`9c191d2f` → `778a14ff`) confirming the new `cacheId` is taking effect.
+
+---
+
+## 2026-06-07 — Feature audit + METAR + outdoor seating + Gemini Q&A + SW disabled
+
+Multi-item pass: audit/log existing features that earlier sessions added, fold in three new data + AI features, and turn off the PWA service worker for the demo run-up.
+
+### Audit (items 1–6)
+
+Grepped + verified the features earlier sessions added are all still wired in App.tsx and the touched components:
+
+- ✅ **Origin location crosshair**: `onUseCurrentLocation={handleUseCurrentLocation}` passed to both `<SearchBar>` mounts (mobile floating + desktop sidebar). `handleUseCurrentLocation` uses `navigator.geolocation.getCurrentPosition` → `reverseGeocode` → `setOrigin`. `CrosshairIcon` + `SmallSpinner` rendered via SearchBar's `trailing` slot.
+- ✅ **Sunny Spot 🌞 filter pill**: `'sunny-spot'` in `FilterMode`, `FILTER_PRESETS`, `FILTER_META`, and `ORDERED_FILTERS`. Pill renders in the filter row.
+- ✅ **Tap-to-set-destination popup**: `<MapTapPopup>` mounted in `renderMapAndSharedChrome()`, `handleMapTap` wired into `<GMACanvas onMapTap=...>`, `pendingTap` state + `handleConfirmDestinationFromTap` reverse-geocodes the tap.
+- ✅ **Re-center button**: `<RecenterButton visible={!followCamActive} onRecenter={resumeFollowCam}>` mounted in the navigation chrome group.
+- ✅ **Navigation chevron**: `HEADING_CHEVRON_ICON` IconLayer in GMACanvas always renders when `liveLocation` is present (no longer gated on heading-present). App.tsx computes `computedHeading` from the bearing between successive raw GPS coords when the geolocation API doesn't expose `heading`.
+- ✅ **Tree canopy classification**: routeColoring's `tree-canopy` branch fires. **NEW:** added `treesAvailable: trees?.length ?? 0` to the `[GMA] Route coloring sources (sun)` log so DevTools shows the raw Overpass tree count alongside the per-route canopy classification count — makes upstream-data-missing vs classifier-broken trivially distinguishable.
+
+### 7. METAR cloud cross-check
+
+- **New** [src/hooks/useMetarData.ts](src/hooks/useMetarData.ts) — fetches `https://aviationweather.gov/api/data/metar?ids=KJFK,KLGA,KEWR&format=json` every 30 min via the same singleton + dedupe + polling pattern as `useWeatherData`. Parses each station's `clouds[]` (`cover` ∈ CLR/SKC/FEW/SCT/BKN/OVC/VV, `base` in ft AGL). `coverFraction` maps cover codes to a [0, 1] fraction using the standard okta scale (CLR=0, FEW=0.2, SCT=0.45, BKN=0.75, OVC=1.0, VV=1.0). Snapshot exposes `reports[]`, `meanCoverPct` (averaged across stations with sky data), and `fetchedAt`. Logs every snapshot to console with station-by-station detail.
+- **App.tsx** now computes a `cloudCoverPct` memo that averages the Open-Meteo / Google Weather reading with the METAR mean when both are present (mean smooths over the ~10–20 min lag either source can have vs the actual sky). Used as the input to `colorizeStreets` for the street-sun overlay so the "is this segment sunny?" gate respects the cross-checked sky state.
+
+### 8. Sunny Spot outdoor spaces
+
+- **Overpass query extended** ([src/lib/overpass.ts](src/lib/overpass.ts)) with `node[amenity=cafe][outdoor_seating=yes](bbox)` and `way[leisure=park]` already in the union. New `OutdoorSpot` type (`{ id, lat, lng, kind: 'park' | 'cafe', name? }`) added to `OverpassData`. `categorize` extracts cafes (node coord) and park centroids (`centroid(geom)` helper) into `outdoorSpots`.
+- **App.tsx `sunnySpots` memo** now layers in Overpass outdoor spots that sit ≤ 150 m from any route segment AND whose nearest segment is sunny per the route classifier. Skipped entirely at night (`solar.elevationDeg > 0` guard). Logs the outdoor-spot scan summary `[GMA] Sunny Spot outdoor scan { outdoorSpotsFetched, outdoorSpotsSunny, routeSpots }` so the audience can see how many real-world patio/park spots got matched in addition to the route-segment-derived synthetic stars.
+
+### 9. Gemini answers everything
+
+- **[src/lib/geminiRouting.ts](src/lib/geminiRouting.ts)** — schema gained a `mode` discriminator (`'routing' | 'qa'`) + an `answer` field. `interpretPreference(text, context)` now takes a `GeminiContext` (`{ weather, cloudCoverPct, sunElevationDeg, currentTime }`) and returns a discriminated `GeminiResponse`:
+  - `mode: 'routing'` → existing remap path; App.tsx calls `mapInterpretation()` and updates the filter.
+  - `mode: 'qa'` → free-text `answer` grounded in the live context the caller injected; App.tsx surfaces the answer as a toast.
+- System instruction lists the live context (temp, wind, cloud, precip, day/night) and explicitly tells the model the two-mode taxonomy + when to pick each.
+- Routing path still flows through `mapInterpretation()` → filter + intensity. The QA path is fully self-contained — no new state.
+
+### 10. PWA service worker — temporarily disabled
+
+- [vite.config.ts](vite.config.ts) — `VitePWA({ injectRegister: null, ... })`. Skips emitting the `navigator.serviceWorker.register()` call. The browser falls back to plain HTTP caching driven by the Netlify headers (`no-store` on `/*.html`), so every navigation pulls a fresh `index.html` and from it the new hashed JS/CSS bundles.
+- The PWA plugin still generates `dist/sw.js` so any previously-installed SW gets a final update cycle and (via `cleanupOutdatedCaches`) clears its caches before going dormant. `cacheId` / `skipWaiting` / `clientsClaim` settings preserved for that final cleanup.
+- Confirmed by the build output: `dist/index.html` dropped 1.46 → 1.39 KB now that the SW register script is no longer inlined.
+- TODO: re-enable `injectRegister` after June 10.
+
+### Files touched
+
+- New: [src/hooks/useMetarData.ts](src/hooks/useMetarData.ts).
+- Updated: [src/App.tsx](src/App.tsx), [src/lib/geminiRouting.ts](src/lib/geminiRouting.ts), [src/lib/overpass.ts](src/lib/overpass.ts), [src/hooks/useOverpassData.ts](src/hooks/useOverpassData.ts), [src/lib/routeColoring.ts](src/lib/routeColoring.ts), [vite.config.ts](vite.config.ts).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.46 MB main chunk, CSS ~30.4 KB / gzip 6.9 KB, ~17 s). index.html 1.46 → 1.39 KB confirms the SW register script is no longer inlined.

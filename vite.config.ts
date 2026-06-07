@@ -40,19 +40,25 @@ export default defineConfig({
       defaultExtension: 'glsl',
     }),
     VitePWA({
+      // TEMPORARILY DISABLED until the June 10 demo. The PWA service
+      // worker has been the single biggest source of "users not seeing
+      // the new build" reports through the prep cycle — even with
+      // skipWaiting + clientsClaim + cleanupOutdatedCaches + a per-
+      // deploy cacheId, edge cases (iOS Safari background-tab pinning,
+      // Chrome Android home-screen installs) still strand users on
+      // stale chunks. `injectRegister: null` skips emitting the
+      // navigator.serviceWorker.register() call entirely, so the
+      // browser falls back to plain HTTP caching driven by the Netlify
+      // headers (no-store on /*.html) — every navigation pulls fresh
+      // index.html, then the hashed JS/CSS load over normal HTTP cache.
+      // Re-enable after June 10.
+      injectRegister: null,
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg'],
-      // Force a clean SW takeover on every deploy. Without these, mobile
-      // PWAs hang onto the previous service worker until the user closes
-      // every open tab — meaning new RouteSheet copy ("feels-like ~X°F"
-      // instead of "X% cooler") wouldn't show until the user fully quit
-      // Safari. skipWaiting + clientsClaim activates the new worker
-      // immediately; cleanupOutdatedCaches drops stale Workbox caches
-      // so we don't serve old hashed JS chunks.
       workbox: {
-        // Per-deploy cache namespace — combined with `cleanupOutdatedCaches`
-        // this guarantees any client that loads a new index.html immediately
-        // drops the previous build's cached chunks.
+        // Cache id still set so any SW that did somehow get installed
+        // in a previous build gets purged when it next checks for an
+        // update (cleanupOutdatedCaches runs from the new SW).
         cacheId: `gma-${BUILD_DATE}`,
         skipWaiting: true,
         clientsClaim: true,

@@ -57,11 +57,26 @@ export interface GreenArea {
   polygon: [number, number][];
 }
 
+/**
+ * A discrete outdoor space — park (way centroid) or cafe with
+ * `outdoor_seating=yes` (node coord). Used by the "Sunny Spot 🌞"
+ * filter to surface places the user could sit in the sun, beyond
+ * the route-segment-derived synthetic markers.
+ */
+export interface OutdoorSpot {
+  id: string;
+  lat: number;
+  lng: number;
+  kind: 'park' | 'cafe';
+  name?: string;
+}
+
 export interface OverpassData {
   streets: StreetWay[];
   trees: TreeNode[];
   buildings: Building[];
   forests: GreenArea[];
+  outdoorSpots: OutdoorSpot[];
 }
 
 export type OverpassStatus = 'success' | 'rate-limited' | 'error';
@@ -71,7 +86,13 @@ export interface OverpassFetchResult {
   status: OverpassStatus;
 }
 
-const EMPTY: OverpassData = { streets: [], trees: [], buildings: [], forests: [] };
+const EMPTY: OverpassData = {
+  streets: [],
+  trees: [],
+  buildings: [],
+  forests: [],
+  outdoorSpots: [],
+};
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; //  2 hours
 const RETRY_DELAYS_MS = [0, 5_000, 15_000, 30_000];
@@ -157,6 +178,11 @@ async function fetchWithBackoff(
     `node[leisure=park](${b});` +
     `way[leisure=park](${b});` +
     `way[landuse=grass](${b});` +
+    // Cafés with outdoor seating — surfaced as discrete OutdoorSpots
+    // for the "Sunny Spot 🌞" filter to mark places the user could
+    // sit in the sun. `outdoor_seating=yes` filter keeps the list
+    // tight to spots that actually have terraces / sidewalk tables.
+    `node[amenity=cafe][outdoor_seating=yes](${b});` +
     // Buildings (shadow projection)
     `way[building](${b});` +
     ');' +
@@ -257,6 +283,7 @@ function categorize(elements: ReadonlyArray<OverpassElement>): OverpassData {
   const trees: TreeNode[] = [];
   const buildings: Building[] = [];
   const forests: GreenArea[] = [];
+  const outdoorSpots: OutdoorSpot[] = [];
 
   for (const el of elements) {
     if (el.type === 'node') {
@@ -274,6 +301,15 @@ function categorize(elements: ReadonlyArray<OverpassElement>): OverpassData {
           tags.tree === 'yes'
         ) {
           trees.push({ lat: el.lat, lng: el.lon });
+        }
+        if (tags.amenity === 'cafe' && tags.outdoor_seating === 'yes') {
+          outdoorSpots.push({
+            id: `node/${el.id}`,
+            lat: el.lat,
+            lng: el.lon,
+            kind: 'cafe',
+            name: tags.name,
+          });
         }
       }
       continue;
@@ -323,11 +359,40 @@ function categorize(elements: ReadonlyArray<OverpassElement>): OverpassData {
       // Parks + grass strips: scatter sparser tree points so route
       // segments along the perimeter / interior register as canopy.
       scatterTreePoints(geom, trees, TREE_SCATTER_STEP_M * 2);
+      // Parks (not grass strips) also surface as discrete OutdoorSpots
+      // — pick the centroid of the way as a representative point so
+      // the "Sunny Spot" star sits roughly in the middle of the
+      // greenery rather than on the perimeter.
+      if (tags.leisure === 'park') {
+        const c = centroid(geom);
+        if (c) {
+          outdoorSpots.push({
+            id,
+            lat: c.lat,
+            lng: c.lng,
+            kind: 'park',
+            name: tags.name,
+          });
+        }
+      }
       continue;
     }
   }
 
-  return { streets, trees, buildings, forests };
+  return { streets, trees, buildings, forests, outdoorSpots };
+}
+
+function centroid(
+  ring: ReadonlyArray<[number, number]>,
+): { lat: number; lng: number } | null {
+  if (ring.length === 0) return null;
+  let lngSum = 0;
+  let latSum = 0;
+  for (const [lng, lat] of ring) {
+    lngSum += lng;
+    latSum += lat;
+  }
+  return { lng: lngSum / ring.length, lat: latSum / ring.length };
 }
 
 const TREE_SCATTER_STEP_M = 12;

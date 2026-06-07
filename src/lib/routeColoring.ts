@@ -301,6 +301,11 @@ export function colorizeRoute(
       glare: glareCount,
       buildingShadow: shadowedCount,
       treeCanopy: treeShadedCount,
+      // Surface the raw tree-input count too — if the Overpass fetch
+      // returns 0 trees we'll see treesAvailable=0 above the
+      // treeCanopy=0 line, making it obvious that the canopy
+      // classifier isn't broken; the upstream data is just missing.
+      treesAvailable: trees?.length ?? 0,
       solarApi: usedSolarCount,
       bearingFallback: usedBearingCount,
       solarCoverage:

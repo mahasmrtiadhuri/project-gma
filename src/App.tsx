@@ -26,6 +26,7 @@ import { VersionLabel } from './components/VersionLabel';
 import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
 import { useWeatherData } from './hooks/useWeatherData';
+import { useMetarData } from './hooks/useMetarData';
 import { useCurrentLocation } from './hooks/useCurrentLocation';
 import { useOverpassData } from './hooks/useOverpassData';
 import { useSolarAPI } from './hooks/useSolarAPI';
@@ -290,6 +291,24 @@ export default function App() {
   const solar = useSolarPosition(effectiveTime, NYC_CENTER.lat, NYC_CENTER.lng);
   const weather = useWeatherData(NYC_CENTER.lat, NYC_CENTER.lng);
 
+  // METAR cross-check from JFK/LGA/EWR. The hook self-polls every
+  // 30 min and logs its own snapshot; we blend its mean cover with
+  // the Google Weather / Open-Meteo reading below to get a more
+  // robust cloudCoverPct for the sun-classifier chain.
+  const metar = useMetarData();
+  const cloudCoverPct = useMemo<number>(() => {
+    const ow = weather?.cloudCoverPct ?? null;
+    const mt = metar?.meanCoverPct ?? null;
+    if (ow != null && mt != null) {
+      // Both sources present — take the mean. METAR is sub-cloud-deck
+      // truth from pilots; Open-Meteo / Google Weather is the
+      // wider-area model. Average smooths over the cases where one
+      // source lags the actual sky by 10–20 min.
+      return Math.round((ow + mt) / 2);
+    }
+    return ow ?? mt ?? 0;
+  }, [weather?.cloudCoverPct, metar?.meanCoverPct]);
+
   // ---- daylight: real sunrise/sunset → progress → phase + color ----
   const sunTimes = useMemo<{ times: SunTimes; source: 'api' | 'computed' } | null>(() => {
     if (weather?.sunriseTime && weather?.sunsetTime) {
@@ -530,14 +549,17 @@ export default function App() {
       overpass.streets,
       solar.azimuthDeg,
       solar.elevationDeg,
-      weather?.cloudCoverPct ?? 0,
+      // METAR-blended cloud cover so the street overlay's "is this
+      // segment sunny?" gate respects the cross-checked sky state,
+      // not just the single-source Open-Meteo/Google reading.
+      cloudCoverPct,
     );
   }, [
     candidates.length,
     overpass.streets,
     solar.azimuthDeg,
     solar.elevationDeg,
-    weather?.cloudCoverPct,
+    cloudCoverPct,
   ]);
 
   // (streetIndex previously feeding scoreAndRankRoutes was removed —
@@ -1049,17 +1071,28 @@ export default function App() {
   const handleSubmitPreference = async (text: string) => {
     setGeminiBusy(true);
     try {
-      const interp = await interpretPreference(text);
-      if (!interp) {
-        setToastMessage(
-          'Could not interpret preference — using current filter',
-        );
+      const response = await interpretPreference(text, {
+        weather: weather ?? null,
+        cloudCoverPct,
+        sunElevationDeg: solar.elevationDeg,
+        currentTime: effectiveTime,
+      });
+      if (!response) {
+        setToastMessage('Could not reach Gemini — try again');
         return;
       }
-      const mapped = mapInterpretation(interp);
-      setFilterMode(mapped.filterMode);
-      setIntensityMultiplier(mapped.intensityMultiplier);
-      setToastMessage(mapped.toastMessage);
+      if (response.mode === 'routing') {
+        // Routing intent — remap to a FilterMode + intensity bump.
+        const mapped = mapInterpretation(response.interpretation);
+        setFilterMode(mapped.filterMode);
+        setIntensityMultiplier(mapped.intensityMultiplier);
+        setToastMessage(mapped.toastMessage);
+        return;
+      }
+      // Q&A intent — Gemini already wrote a context-grounded answer.
+      // Surface it as a toast (keeps the chat surface lightweight; the
+      // confidence range stays in the conversation history).
+      setToastMessage(response.answer);
     } finally {
       setGeminiBusy(false);
     }
@@ -1154,8 +1187,58 @@ export default function App() {
       }
       distSinceLast += segLenM;
     }
+
+    // Layer in nearby outdoor spaces (Overpass parks + cafes with
+    // outdoor_seating=yes) that sit within ~150 m of the route AND
+    // happen to be sunny right now per the route classifier. The
+    // proximity check uses the closest route-segment midpoint; the
+    // sunny check inherits classification from that nearest segment
+    // (an OutdoorSpot near a sunny segment is sunny, near a shaded
+    // segment is shaded). Skip night entirely.
+    if (
+      solar.elevationDeg > 0 &&
+      overpass.outdoorSpots.length > 0 &&
+      coloredSegments.length > 0
+    ) {
+      const NEAR_M = 150;
+      let outdoorSunnyCount = 0;
+      for (const spot of overpass.outdoorSpots) {
+        let bestDist = Infinity;
+        let bestSunny = false;
+        for (const seg of coloredSegments) {
+          const a = seg.path[0];
+          const b = seg.path[1];
+          if (!a || !b) continue;
+          const midLng = (a[0] + b[0]) / 2;
+          const midLat = (a[1] + b[1]) / 2;
+          const dLng = (spot.lng - midLng) * 84_500;
+          const dLat = (spot.lat - midLat) * 111_000;
+          const dM = Math.sqrt(dLng * dLng + dLat * dLat);
+          if (dM < bestDist) {
+            bestDist = dM;
+            bestSunny =
+              seg.reason === 'sunny' || seg.reason === 'glare';
+          }
+        }
+        if (bestDist <= NEAR_M && bestSunny) {
+          spots.push({ lat: spot.lat, lng: spot.lng });
+          outdoorSunnyCount++;
+        }
+      }
+      console.log('[GMA] Sunny Spot outdoor scan', {
+        outdoorSpotsFetched: overpass.outdoorSpots.length,
+        outdoorSpotsSunny: outdoorSunnyCount,
+        routeSpots: spots.length - outdoorSunnyCount,
+      });
+    }
+
     return spots.length > 0 ? spots : null;
-  }, [filterMode, coloredSegments]);
+  }, [
+    filterMode,
+    coloredSegments,
+    overpass.outdoorSpots,
+    solar.elevationDeg,
+  ]);
 
   const remainingDurationS = selectedRoute
     ? selectedRoute.distanceMeters > 0

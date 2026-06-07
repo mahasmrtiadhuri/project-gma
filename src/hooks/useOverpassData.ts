@@ -11,6 +11,7 @@ const EMPTY: OverpassData = {
   trees: [],
   buildings: [],
   forests: [],
+  outdoorSpots: [],
 };
 
 const DEBOUNCE_MS = 3_000;
