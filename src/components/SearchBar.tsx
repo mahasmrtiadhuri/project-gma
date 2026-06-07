@@ -17,6 +17,16 @@ export interface SearchBarProps {
   onOriginChange: (next: PlacePick | null) => void;
   onDestinationChange: (next: PlacePick | null) => void;
   onSwap: () => void;
+  /**
+   * Optional handler wired to a small crosshair button inside the
+   * origin field. When supplied, the field renders a "Use my
+   * current location" affordance on the right edge. App.tsx kicks
+   * off `navigator.geolocation.getCurrentPosition` then reverse-
+   * geocodes the result and updates origin via `onOriginChange`.
+   */
+  onUseCurrentLocation?: () => void;
+  /** True while an in-flight geolocation lookup is running — disables the button + swaps the icon for a spinner. */
+  locating?: boolean;
 }
 
 const SEARCH_BOUNDS: google.maps.LatLngBoundsLiteral = {
@@ -37,6 +47,8 @@ export function SearchBar({
   onOriginChange,
   onDestinationChange,
   onSwap,
+  onUseCurrentLocation,
+  locating = false,
 }: SearchBarProps) {
   return (
     <div className="pointer-events-auto w-full">
@@ -60,6 +72,19 @@ export function SearchBar({
               placeholder="Your location"
               ariaLabel="Origin"
               onSelect={onOriginChange}
+              trailing={
+                onUseCurrentLocation ? (
+                  <button
+                    type="button"
+                    onClick={onUseCurrentLocation}
+                    disabled={locating}
+                    aria-label="Use my current location"
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--gma-accent-wind)] hover:bg-[var(--gma-hover-bg)] disabled:opacity-50"
+                  >
+                    {locating ? <SmallSpinner /> : <CrosshairIcon />}
+                  </button>
+                ) : undefined
+              }
             />
           }
         />
@@ -120,6 +145,12 @@ interface PlaceFieldProps {
   ariaLabel: string;
   onSelect: (pick: PlacePick) => void;
   onClear?: () => void;
+  /**
+   * Extra accessory rendered on the right edge of the field when
+   * there's no clear button to show (e.g. origin's "use current
+   * location" crosshair).
+   */
+  trailing?: React.ReactNode;
 }
 
 const DEBOUNCE_MS = 200;
@@ -130,6 +161,7 @@ function PlaceField({
   ariaLabel,
   onSelect,
   onClear,
+  trailing,
 }: PlaceFieldProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const [text, setText] = useState(value);
@@ -350,10 +382,10 @@ function PlaceField({
         spellCheck={false}
         className={
           'w-full rounded-lg px-3.5 py-3 text-base outline-none placeholder:text-[var(--gma-text-muted)]' +
-          // Reserve space for the 44 px clear button on fields that can
-          // surface one (destination only) so long labels don't slide
-          // under the X icon.
-          (onClear ? ' pr-12' : '')
+          // Reserve space for the 44 px clear button OR the trailing
+          // accessory (e.g. origin's location crosshair) so long
+          // labels don't slide under either.
+          (onClear || trailing ? ' pr-12' : '')
         }
         style={{
           background: 'var(--gma-input-bg)',
@@ -372,6 +404,12 @@ function PlaceField({
         >
           <CloseIcon />
         </button>
+      )}
+
+      {trailing && !(onClear && text) && (
+        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center">
+          {trailing}
+        </div>
       )}
 
       {dropdownOpen && suggestions.length > 0 && (
@@ -479,6 +517,35 @@ function CloseIcon() {
         strokeWidth="2.5"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function CrosshairIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
+      <line x1="12" y1="1.5" x2="12" y2="5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <line x1="12" y1="19" x2="12" y2="22.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <line x1="1.5" y1="12" x2="5" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <line x1="19" y1="12" x2="22.5" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SmallSpinner() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      className="animate-spin"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
   );
 }

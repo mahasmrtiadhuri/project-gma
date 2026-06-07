@@ -90,9 +90,18 @@ const DEST_PIN_SVG =
   '<circle cx="16" cy="16" r="5" fill="white"/>' +
   '</svg>';
 
+// Sunny-spot star — used by the "Sunny Spot 🌞" filter to mark
+// sunlit patches along the route where the user could plant
+// themselves with a coffee. 5-point star, amber fill, white stroke.
+const SUNNY_STAR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+  '<path d="M16 2 L19.6 12.4 L30.4 12.6 L21.8 19.2 L25 29.6 L16 23.4 L7 29.6 L10.2 19.2 L1.6 12.6 L12.4 12.4 Z" fill="rgb(252,211,77)" stroke="rgb(180,83,9)" stroke-width="1.5" stroke-linejoin="round"/>' +
+  '</svg>';
+
 const HEADING_CHEVRON_URL = `data:image/svg+xml;base64,${btoa(HEADING_CHEVRON_SVG)}`;
 const ORIGIN_PIN_URL = `data:image/svg+xml;base64,${btoa(ORIGIN_PIN_SVG)}`;
 const DEST_PIN_URL = `data:image/svg+xml;base64,${btoa(DEST_PIN_SVG)}`;
+const SUNNY_STAR_URL = `data:image/svg+xml;base64,${btoa(SUNNY_STAR_SVG)}`;
 
 const HEADING_CHEVRON_ICON = {
   url: HEADING_CHEVRON_URL,
@@ -121,6 +130,15 @@ const DEST_PIN_ICON = {
   mask: false,
 };
 
+const SUNNY_STAR_ICON = {
+  url: SUNNY_STAR_URL,
+  width: 32,
+  height: 32,
+  anchorX: 16,
+  anchorY: 16, // centered — stars float over their geo coord, not pinned
+  mask: false,
+};
+
 export interface GMACanvasProps {
   selectedRoute: ScoredRoute | null;
   /** Per-segment route colored by sun / tree / building shadow status. */
@@ -146,6 +164,15 @@ export interface GMACanvasProps {
    * this to pause the follow-cam when the user explicitly pans.
    */
   onViewStateChange: (next: MapViewState, userInteracting: boolean) => void;
+  /**
+   * Fires when the user taps/clicks the basemap with no route segment
+   * hit. The parent gets the world coord + screen pixel position so it
+   * can render a "Set as destination" popup anchored at the tap.
+   * Hits on the route polyline keep their existing tooltip behavior.
+   */
+  onMapTap?: (
+    info: { lng: number; lat: number; pixelX: number; pixelY: number },
+  ) => void;
   /**
    * Glass-glare hotspots projected from glass-clad buildings. Rendered
    * as 15 m orange-red dots between the shadow + street-overlay layers
@@ -179,6 +206,12 @@ export interface GMACanvasProps {
   /** Red pin shown at the route's destination while navigating. */
   destinationPoint?: { lat: number; lng: number } | null;
   /**
+   * Yellow star markers used by the "Sunny Spot 🌞" (Patio Gold Rush)
+   * filter — one per sunlit patch along the route. Null hides the
+   * layer entirely.
+   */
+  sunnySpots?: ReadonlyArray<{ lat: number; lng: number }> | null;
+  /**
    * Active theme — drives map-overlay opacity. Light mode keeps overlays
    * subtle (so the white basemap stays readable); dark mode amplifies to
    * vivid (so the route + glare hotspots glow against the dark map).
@@ -202,6 +235,8 @@ export function GMACanvas({
   theme,
   originPoint,
   destinationPoint,
+  sunnySpots,
+  onMapTap,
 }: GMACanvasProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const isDark = theme === 'dark';
@@ -404,12 +439,14 @@ export function GMACanvas({
       }
     }
 
-    // ---- navigation marker pins (green origin / red destination) ----
-    // Mounted only during navigation so the user always knows where
-    // they started and where they're going, even when the follow-cam
-    // pans far from either endpoint. Both anchor at the point of the
-    // pin (anchorY: 38) so the geo coord is exactly underneath the tip.
-    if (navigating && originPoint) {
+    // ---- origin + destination pins ---------------------------------
+    // Visible whenever the caller passes an `originPoint` /
+    // `destinationPoint` — App.tsx renders them as soon as the user
+    // has picked an origin/destination and a route is showing, then
+    // keeps them up through navigation. Both anchor at the point of
+    // the pin (anchorY: 38) so the geo coord sits exactly under the
+    // pin's tip.
+    if (originPoint) {
       out.push(
         new IconLayer<{ lat: number; lng: number }>({
           id: 'nav-origin-pin',
@@ -426,7 +463,7 @@ export function GMACanvas({
         }),
       );
     }
-    if (navigating && destinationPoint) {
+    if (destinationPoint) {
       out.push(
         new IconLayer<{ lat: number; lng: number }>({
           id: 'nav-destination-pin',
@@ -439,6 +476,28 @@ export function GMACanvas({
           parameters: { depthCompare: 'always', depthWriteEnabled: false },
           updateTriggers: {
             getPosition: [destinationPoint.lng, destinationPoint.lat],
+          },
+        }),
+      );
+    }
+
+    // ---- Sunny-spot star markers -----------------------------------
+    // Yellow stars at sunlit patches along the route (filter = sunny-spot).
+    // Pixel-sized so they stay recognizable at any zoom; centered anchor
+    // so the star floats over its geo coord rather than dangling from it.
+    if (sunnySpots && sunnySpots.length > 0) {
+      out.push(
+        new IconLayer<{ lat: number; lng: number }>({
+          id: 'sunny-spot-stars',
+          data: sunnySpots as { lat: number; lng: number }[],
+          getPosition: (d) => [d.lng, d.lat],
+          getIcon: () => SUNNY_STAR_ICON,
+          getSize: 28,
+          sizeUnits: 'pixels',
+          pickable: false,
+          parameters: { depthCompare: 'always', depthWriteEnabled: false },
+          updateTriggers: {
+            getPosition: sunnySpots,
           },
         }),
       );
@@ -551,6 +610,7 @@ export function GMACanvas({
     theme,
     originPoint,
     destinationPoint,
+    sunnySpots,
   ]);
 
   const getTooltip = useCallback(
@@ -589,10 +649,21 @@ export function GMACanvas({
         controller
         layers={layers}
         getTooltip={getTooltip}
+        onClick={(info) => {
+          // Tap-to-set-destination. Only fire when the user hit a
+          // non-pickable background area (info.layer == null) — clicks
+          // on the route polyline keep their existing hover tooltip
+          // behavior. We need both world coords (for reverse geocode
+          // + setDestination) and screen pixels (so App.tsx can anchor
+          // the popup at the tap).
+          if (!onMapTap) return;
+          if (info.layer) return;
+          if (!info.coordinate) return;
+          const [lng, lat] = info.coordinate;
+          if (lng == null || lat == null) return;
+          onMapTap({ lng, lat, pixelX: info.x, pixelY: info.y });
+        }}
         onViewStateChange={({ viewState: next, interactionState }) => {
-          // deck.gl reports `isDragging` / `isPanning` / `isZooming`
-          // while a pointer-driven gesture is in flight. We treat
-          // any of those as a user interaction.
           const userInteracting =
             !!interactionState?.isDragging ||
             !!interactionState?.isPanning ||

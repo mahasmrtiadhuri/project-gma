@@ -3499,3 +3499,50 @@ The map + the shared floating chrome render identically in both layouts; only th
 
 - `tsc -b` clean
 - `vite build` clean (~1.45 MB main chunk, CSS ~30.2 KB / gzip 6.8 KB, ~10 s)
+
+---
+
+## 2026-06-07 — Negative-sign fix, location button, tap-to-destination, always-on pins, Sunny Spot (Patio Gold Rush)
+
+Five-item pass adding two new flagship features (tap-to-set-destination, Sunny Spot filter) plus three polish items.
+
+### 1. Defensive `Math.abs` on every °F delta
+
+Hardened all five `~${N}°F …` template literals against negative values: `~${Math.abs(warmer)}°F warmer`, `~${Math.abs(hotter)}°F hotter`, `~${Math.abs(cooler)}°F cooler`, plus the `feel ~${Math.abs(degrees)}°F ${direction}` / `Feels ~${Math.abs(degrees)}°F ${direction}` pair in `computeFeelsLikeDelta`. The early-return guards (`< 1` returns the "Same temp"/"Full sun" fallback strings) already filtered non-positives, but the `Math.abs` belt-and-suspenders pass guarantees a stray sign-flipped value upstream can never reach the rendered string. Same treatment applied to `buildStartToast` in App.tsx. *Files:* [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx), [src/App.tsx](src/App.tsx).
+
+### 2. Origin / destination pins whenever a route is on the map
+
+GMACanvas's IconLayers for `nav-origin-pin` + `nav-destination-pin` no longer require `navigating === true`. They mount whenever the caller passes `originPoint` / `destinationPoint`. App.tsx now passes them whenever a route is on the map (`selectedRoute || navigating ? origin?.point : null`), so the user sees green/red endpoints from the moment the Routes API returns through the entire navigation session. *Files:* [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx), [src/App.tsx](src/App.tsx).
+
+### 3. "Use my current location" button inside the origin field
+
+- New `onUseCurrentLocation?: () => void` + `locating?: boolean` props on [SearchBar](src/components/SearchBar.tsx). The origin `PlaceField` now accepts a `trailing?: React.ReactNode` slot; when there's no clear button visible the slot renders on the right edge.
+- App.tsx wires `handleUseCurrentLocation` — fresh `navigator.geolocation.getCurrentPosition` request (independent from the on-load `useCurrentLocation` hook), then `reverseGeocode` to get a human-readable label, then `setOrigin`. Spinner replaces the crosshair icon during the in-flight request via `locating`. Default on-load auto-fill behavior preserved.
+- New `CrosshairIcon` + `SmallSpinner` SVGs in SearchBar.tsx.
+
+### 4. Tap-to-set-destination popup
+
+- New [src/components/MapTapPopup.tsx](src/components/MapTapPopup.tsx) — small `.gma-card` rounded-pill anchored to the tap pixel via `transform: translate(-50%, calc(-100% - 12px))` so the bubble sits 12 px above the user's finger. Contains a "Set as destination" amber pill + close-X. Bottom-pointer triangle decorates the tap anchor. A z-49 transparent backdrop handles tap-outside dismiss.
+- GMACanvas gains `onMapTap?` prop. The DeckGL `onClick` handler fires it only when the user taps the basemap (no `info.layer` hit) — clicks on the route polyline keep their existing hover tooltip.
+- App.tsx tracks `pendingTap` state + `settingDestination` busy flag. Tap → render popup; "Set as destination" → `reverseGeocode` → `setDestination` → clear pending. Suppressed during navigation (the live map is for following, not re-routing). The popup mounts inside the map area helper so it positions correctly in both mobile-floating and desktop-sidebar layouts.
+
+### 5. Sunny Spot filter (Patio Gold Rush)
+
+The "find me a sunny patio at 4 PM" use case from CLAUDE.md §5, now first-class.
+
+- New `'sunny-spot'` member on `FilterMode` (in [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)).
+- `FILTER_PRESETS['sunny-spot']` = `{ glareAvoidance: -1.5, … }` — a stronger inversion than `'sunniest'` so the sunny-spot ranking dominates ties decisively.
+- `FILTER_META['sunny-spot']` = `{ label: 'Sunny Spot 🌞', verb: 'warmer', accent: 'sun' }`. Added to `ORDERED_FILTERS` after `sunniest`.
+- `filterToSunDirection('sunny-spot')` → `'sunnier'`; `computeFeelsLikeDelta` direction selector accepts both `sunniest` and `sunny-spot`.
+- `comfortBadgeFor('sunny-spot')` returns `~X°F warmer · Perfect for outdoor seating` — concatenates the temp delta with the seating callout. Drops the `~X°F warmer` prefix when the route is too cool (warmer < 1°F) and just surfaces "Perfect for outdoor seating".
+- **Yellow star markers**: new `sunnySpots?` prop on GMACanvas; new `SUNNY_STAR_SVG` constant (5-point amber star with brown outline) → `SUNNY_STAR_ICON`. IconLayer renders one centered-anchor star per sunlit patch along the route. App.tsx computes the spots from `coloredSegments` — every 120 m of contiguous sunny stretch gets one star, restarting whenever the route enters shade so each new sunny pocket gets its own marker. This is a route-segment-derived proxy for true cafe / park positions; a future iteration could overlay Overpass-fetched `amenity=cafe` + `leisure=park` nodes filtered to high-exposure spots.
+
+### Files touched
+
+- New: [src/components/MapTapPopup.tsx](src/components/MapTapPopup.tsx).
+- Updated: [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx), [src/components/SearchBar.tsx](src/components/SearchBar.tsx), [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx), [src/App.tsx](src/App.tsx).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.46 MB main chunk, CSS ~30.4 KB / gzip 6.9 KB, ~15 s)

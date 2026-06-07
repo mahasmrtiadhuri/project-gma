@@ -21,6 +21,7 @@ import { DataAttribution } from './components/DataAttribution';
 import { Toast } from './components/Toast';
 import { ThemeToggle } from './components/ThemeToggle';
 import { StartButton } from './components/StartButton';
+import { MapTapPopup } from './components/MapTapPopup';
 import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
 import { useWeatherData } from './hooks/useWeatherData';
@@ -926,6 +927,70 @@ export default function App() {
     setDestination(origin);
   };
 
+  // ---- "Use my current location" button inside origin field -----------
+  // Triggered by SearchBar's origin crosshair affordance. Requests a
+  // fresh geolocation fix, reverse-geocodes it to a human-readable
+  // address, then sets origin. Independent of the on-load `useCurrentLocation`
+  // hook so the user can re-request a fresh fix mid-session
+  // (e.g. after walking a block away).
+  const [locatingOrigin, setLocatingOrigin] = useState(false);
+
+  // ---- Tap-to-set-destination popup state -----------------------------
+  // GMACanvas's onMapTap callback stashes the tap coord + screen
+  // pixel here. App renders <MapTapPopup> anchored to those pixels;
+  // tapping "Set as destination" reverse-geocodes the coord and
+  // commits via setDestination. Tap outside (backdrop) clears.
+  const [pendingTap, setPendingTap] = useState<{
+    lng: number;
+    lat: number;
+    pixelX: number;
+    pixelY: number;
+  } | null>(null);
+  const [settingDestination, setSettingDestination] = useState(false);
+
+  const handleMapTap = useCallback(
+    (info: { lng: number; lat: number; pixelX: number; pixelY: number }) => {
+      // Suppress tap-to-destination during navigation — the live map
+      // is for following the route, not re-routing.
+      if (navigating) return;
+      setPendingTap(info);
+    },
+    [navigating],
+  );
+
+  const handleConfirmDestinationFromTap = useCallback(async () => {
+    if (!pendingTap) return;
+    setSettingDestination(true);
+    const { lat, lng } = pendingTap;
+    const label =
+      (await reverseGeocode(lat, lng, apiKey)) ??
+      `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    setDestination({ point: { lat, lng }, label });
+    setSettingDestination(false);
+    setPendingTap(null);
+  }, [pendingTap, apiKey]);
+  const handleUseCurrentLocation = useCallback(() => {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      console.warn('[GMA] Geolocation API not available');
+      return;
+    }
+    setLocatingOrigin(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const label = (await reverseGeocode(lat, lng, apiKey)) ?? 'Current location';
+        setOrigin({ point: { lat, lng }, label });
+        setLocatingOrigin(false);
+      },
+      (error) => {
+        console.warn('[GMA] Geolocation request failed:', error);
+        setLocatingOrigin(false);
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+    );
+  }, [apiKey]);
+
   const handleStartNavigation = () => {
     if (!origin || !selectedRoute) return;
     // Flip to navigation mode FIRST so the UI transitions immediately —
@@ -1033,6 +1098,49 @@ export default function App() {
     return coloredSegments[idx]?.color ?? null;
   }, [navigating, coloredSegments, routeProgress?.nearestVertexIdx]);
 
+  // ---- Sunny Spot markers (Patio Gold Rush use case) -----------------
+  // Yellow star pins at sunlit patches along the route — what the user
+  // selects "Sunny Spot 🌞" to find. Drawn from the route's own
+  // sun-classified segments: every `STRIDE_M` meters of contiguous
+  // sunny stretch gets one star, restarting the counter whenever the
+  // route enters shade so each new sunny pocket gets its own star
+  // even if it's short.
+  //
+  // This is a coloredSegment-derived proxy for true outdoor cafe /
+  // park positions. A future iteration could overlay Overpass-fetched
+  // amenity=cafe + leisure=park nodes filtered to high-exposure spots.
+  const sunnySpots = useMemo<{ lat: number; lng: number }[] | null>(() => {
+    if (filterMode !== 'sunny-spot') return null;
+    if (!coloredSegments || coloredSegments.length === 0) return null;
+    const STRIDE_M = 120;
+    const spots: { lat: number; lng: number }[] = [];
+    let distSinceLast = STRIDE_M; // emit first eligible segment
+    for (const seg of coloredSegments) {
+      const isSunny = seg.reason === 'sunny' || seg.reason === 'glare';
+      if (!isSunny) {
+        distSinceLast = STRIDE_M;
+        continue;
+      }
+      const a = seg.path[0];
+      const b = seg.path[1];
+      if (!a || !b) continue;
+      const dLng = b[0] - a[0];
+      const dLat = b[1] - a[1];
+      const segLenM = Math.sqrt(
+        (dLng * 84_500) ** 2 + (dLat * 111_000) ** 2,
+      );
+      if (distSinceLast >= STRIDE_M) {
+        spots.push({
+          lat: (a[1] + b[1]) / 2,
+          lng: (a[0] + b[0]) / 2,
+        });
+        distSinceLast = 0;
+      }
+      distSinceLast += segLenM;
+    }
+    return spots.length > 0 ? spots : null;
+  }, [filterMode, coloredSegments]);
+
   const remainingDurationS = selectedRoute
     ? selectedRoute.distanceMeters > 0
       ? selectedRoute.durationSeconds *
@@ -1114,9 +1222,29 @@ export default function App() {
         }
         navigating={navigating}
         theme={theme}
-        originPoint={navigating ? origin?.point ?? null : null}
-        destinationPoint={navigating ? destination?.point ?? null : null}
+        // Pins render whenever a route is on the map (selectedRoute
+        // is non-null) OR during navigation. This way the user sees
+        // green/red endpoints from the moment the route is computed
+        // through the entire follow-cam session.
+        originPoint={
+          selectedRoute || navigating ? origin?.point ?? null : null
+        }
+        destinationPoint={
+          selectedRoute || navigating ? destination?.point ?? null : null
+        }
+        sunnySpots={sunnySpots}
+        onMapTap={handleMapTap}
       />
+
+      {pendingTap && !navigating && (
+        <MapTapPopup
+          pixelX={pendingTap.pixelX}
+          pixelY={pendingTap.pixelY}
+          onSetDestination={handleConfirmDestinationFromTap}
+          onDismiss={() => setPendingTap(null)}
+          busy={settingDestination}
+        />
+      )}
 
       <SunGlow
         sunAzimuthDeg={solar.azimuthDeg}
@@ -1141,6 +1269,8 @@ export default function App() {
               onOriginChange={setOrigin}
               onDestinationChange={setDestination}
               onSwap={handleSwap}
+              onUseCurrentLocation={handleUseCurrentLocation}
+              locating={locatingOrigin}
             />
           </div>
           {sheetOpen && (
@@ -1287,6 +1417,8 @@ export default function App() {
           onOriginChange={setOrigin}
           onDestinationChange={setDestination}
           onSwap={handleSwap}
+          onUseCurrentLocation={handleUseCurrentLocation}
+          locating={locatingOrigin}
         />
         {sheetOpen && (
           <TransportModeSwitcher
@@ -1405,7 +1537,7 @@ function buildStartToast(
       Math.max(0, Math.min(1, sunExposure)) * MAX_DELTA,
     );
     return warmer > 0
-      ? `☀️ Catching maximum sun · ~${warmer}°F warmer`
+      ? `☀️ Catching maximum sun · ~${Math.abs(warmer)}°F warmer`
       : '☀️ Catching maximum sun';
   }
   if (sunExposure > 1.0) {
@@ -1416,7 +1548,7 @@ function buildStartToast(
   }
   const cooler = Math.round((1 - sunExposure) * MAX_DELTA);
   return cooler > 0
-    ? `🌳 Feels ~${cooler}°F cooler`
+    ? `🌳 Feels ~${Math.abs(cooler)}°F cooler`
     : '🌳 Best comfort GMA could find';
 }
 

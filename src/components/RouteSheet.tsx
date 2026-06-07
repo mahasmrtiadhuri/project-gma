@@ -16,6 +16,7 @@ export type FilterMode =
   | 'avoid-both'
   | 'avoid-rain'
   | 'sunniest'
+  | 'sunny-spot'
   | 'no-preference';
 
 // All four cost axes (sun / wind / rain / shade-bonus) baked into each
@@ -54,6 +55,16 @@ export const FILTER_PRESETS: Record<FilterMode, HlciWeights> = {
     shadePreference: 0.0,
     rainAvoidance: 0.0,
   },
+  // Patio Gold Rush — caller wants the SUNNIEST possible patch along
+  // the route so they can plant a coffee and read in direct sun.
+  // Same negative glareAvoidance as 'sunniest' but stronger so the
+  // sunny-spot ranking dominates ties decisively.
+  'sunny-spot': {
+    glareAvoidance: -1.5,
+    windAvoidance: 0.0,
+    shadePreference: 0.0,
+    rainAvoidance: 0.0,
+  },
   'no-preference': {
     glareAvoidance: 0.0,
     windAvoidance: 0.0,
@@ -71,6 +82,7 @@ const FILTER_META: Record<
   'avoid-both': { label: 'Avoid Both', verb: 'gentler', accent: 'sun' },
   'avoid-rain': { label: 'Avoid Rain', verb: 'drier', accent: 'rain' },
   sunniest: { label: 'Sunniest', verb: 'sunnier', accent: 'sun' },
+  'sunny-spot': { label: 'Sunny Spot 🌞', verb: 'warmer', accent: 'sun' },
   'no-preference': { label: 'No preference', verb: 'comfort', accent: 'neutral' },
 };
 
@@ -84,6 +96,7 @@ const ORDERED_FILTERS: FilterMode[] = [
   'avoid-both',
   'avoid-rain',
   'sunniest',
+  'sunny-spot',
   'no-preference',
 ];
 
@@ -94,7 +107,7 @@ const ORDERED_FILTERS: FilterMode[] = [
  */
 function filterToSunDirection(mode: FilterMode): SunComfortDirection {
   if (mode === 'avoid-sun' || mode === 'avoid-both') return 'cooler';
-  if (mode === 'sunniest') return 'sunnier';
+  if (mode === 'sunniest' || mode === 'sunny-spot') return 'sunnier';
   return null;
 }
 
@@ -845,9 +858,26 @@ function comfortBadgeFor(
     return { text: 'Less rain exposure', color: 'rgb(71, 85, 105)' };
   }
 
-  // Sun, sunniest, both, no-preference — use feels-like temp delta.
-  // Glare segments push exposure above 1.0 and amplify the heat felt.
+  // Sun, sunniest, sunny-spot, both, no-preference — feels-like
+  // temp delta. Glare segments push exposure above 1.0 and amplify
+  // the heat felt.
   const exposure = route.meanSunExposure ?? 0;
+  // Patio Gold Rush — caller wants warmth + a place to sit. Same
+  // numeric delta as 'sunniest' (~X°F warmer) but appended with the
+  // outdoor-seating callout. Below 1°F warmer we still surface the
+  // seating phrase so the user knows the route delivers on the
+  // promise of finding sunny spots even on a cool route.
+  if (filterMode === 'sunny-spot') {
+    const warmer = Math.round(
+      Math.min(1, exposure) * MAX_FEELS_LIKE_DELTA_F,
+    );
+    const tempPart =
+      warmer >= 1 ? `~${Math.abs(warmer)}°F warmer · ` : '';
+    return {
+      text: `${tempPart}Perfect for outdoor seating`,
+      color: 'rgb(234, 88, 12)',
+    };
+  }
   if (filterMode === 'sunniest') {
     const warmer = Math.round(
       Math.min(1, exposure) * MAX_FEELS_LIKE_DELTA_F,
@@ -856,7 +886,11 @@ function comfortBadgeFor(
       return { text: 'Same temp', color: 'var(--gma-text-secondary)' };
     }
     return {
-      text: `~${warmer}°F warmer`,
+      // Math.abs is defensive — the `if (warmer < 1)` early return
+      // above already filters non-positives, but if upstream math
+      // ever lets a negative slip through, we still render an
+      // unsigned magnitude rather than "~-X°F".
+      text: `~${Math.abs(warmer)}°F warmer`,
       color: 'rgb(234, 88, 12)',
     };
   }
@@ -866,7 +900,7 @@ function comfortBadgeFor(
       Math.min(1.5, exposure) * MAX_FEELS_LIKE_DELTA_F,
     );
     return {
-      text: `~${hotter}°F hotter`,
+      text: `~${Math.abs(hotter)}°F hotter`,
       color: 'rgb(220, 38, 38)',
     };
   }
@@ -875,7 +909,7 @@ function comfortBadgeFor(
     return { text: 'Full sun', color: 'rgb(234, 88, 12)' };
   }
   return {
-    text: `~${cooler}°F cooler`,
+    text: `~${Math.abs(cooler)}°F cooler`,
     color: 'rgb(30, 120, 60)',
   };
 }
@@ -933,7 +967,7 @@ function computeFeelsLikeDelta(
   const fSun = Math.max(0, Math.min(1.5, fastest.meanSunExposure ?? 0));
   const cSun = Math.max(0, Math.min(1.5, comfort.meanSunExposure ?? 0));
   const direction =
-    filterMode === 'sunniest'
+    filterMode === 'sunniest' || filterMode === 'sunny-spot'
       ? ('warmer' as const)
       : ('cooler' as const);
   const raw =
@@ -943,8 +977,8 @@ function computeFeelsLikeDelta(
   const degrees = Math.round(raw);
   if (degrees < 1) return null;
   return {
-    phrase: `feel ~${degrees}°F ${direction}`,
-    shortPhrase: `Feels ~${degrees}°F ${direction}`,
+    phrase: `feel ~${Math.abs(degrees)}°F ${direction}`,
+    shortPhrase: `Feels ~${Math.abs(degrees)}°F ${direction}`,
   };
 }
 
