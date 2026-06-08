@@ -4153,3 +4153,76 @@ The AI step moved from t=45 → t=40 displaces the prior sunny-spot filter. Othe
 
 - `tsc -b` clean
 - `vite build` clean (~1.48 MB main chunk, ~16 s)
+
+---
+
+## 2026-06-08 — AI Chat panel replaces inline conversational input
+
+Promoted the natural-language flow from a one-line input inside the route sheet to a proper dark-glassmorphism chat panel floating bottom-right. Multi-condition prompts ("I'm in a suit, it's hot, slight drizzle, running late") now extract every signal Gemini can find, the route updates silently in the background, and the AI's reasoning lands in the panel as a chat bubble.
+
+### 1. Gemini schema + interpretation extended
+
+[src/lib/geminiRouting.ts](src/lib/geminiRouting.ts):
+
+- `GeminiInterpretation` gained `rainPreference: 'avoid_rain' | 'neutral'` and `urgency: 'low' | 'medium' | 'high'`.
+- `GeminiResponse` routing variant gained a required `reasoning: string` field — the chat-bubble text Gemini composes alongside the structured intent.
+- `RESPONSE_SCHEMA` matches: `rainPreference`, `urgency`, `reasoning` added (all optional in `required[]` so legacy responses still parse).
+- System instruction explicitly tells Gemini to "extract EVERY signal you can find" and gives the example prompt verbatim. Lists each field's enum domain. Demands a friendly 1–2 sentence `reasoning` summary for routing mode.
+- `parseGeminiResponse` defaults missing rainPreference/urgency to neutral/low for back-compat. Synthesizes a fallback reasoning string when Gemini forgets it.
+- `mapInterpretation` now factors in rainPreference (priority: want_sun → avoid-both → avoid-sun → avoid-rain → avoid-wind → no-preference) and urgency (high urgency dampens comfort weights by ×0.85 so duration wins ties).
+
+### 2. AIChatButton
+
+New [src/components/AIChatButton.tsx](src/components/AIChatButton.tsx). 52 × 52 px amber FAB (linear gradient `#F59E0B → #EA8000`, white border at 0.35 alpha, amber-shadowed). Sparkle icon — 4-point star + two faint twinkles. Position: `right: 16; bottom: calc(env+5rem); zIndex: 95`. Visible whenever `!navigating && !chatOpen`.
+
+### 3. AIChatPanel
+
+New [src/components/AIChatPanel.tsx](src/components/AIChatPanel.tsx). Slides in bottom-right at `right: 16; bottom: env+16; w: min(380, calc(100vw - 32)); h: min(480, calc(100vh - 32)); zIndex: 100`. Dark glassmorphism: `rgba(15, 23, 42, 0.95)` + `backdrop-filter: blur(20px) saturate(140%)` + white-tinted border. Three vertical sections:
+
+- **Header** — amber sparkle puck + "GMA AI Assistant" + slate close button.
+- **Chat history** — scrollable, auto-scrolls to bottom on new messages. Empty-state hint shows the example prompt. User bubbles: amber gradient, right-aligned, tight bottom-right radius. AI bubbles: white-tint, left-aligned, tight bottom-left radius. Typing indicator (3-dot animation) while `busy`.
+- **Composer** — multi-line `<textarea rows={4} maxLength=300>` + amber send button. Enter submits, Shift+Enter inserts newline. Disabled while busy OR while `overrideText` is non-null (demo typewriter).
+- New `@keyframes gma-typing-dot` in [src/styles/globals.css](src/styles/globals.css) (3-dot stagger).
+
+### 4. AI response in chat bubble
+
+`handleSubmitPreference` in [src/App.tsx](src/App.tsx) is now chat-aware:
+
+1. Pushes a user bubble into `chatMessages` immediately.
+2. Calls `interpretPreference(...)` with live context.
+3. If routing intent → applies `mapInterpretation` (filter + intensity) AND pushes an AI bubble with `response.reasoning`.
+4. If QA intent → pushes an AI bubble with `response.answer`.
+5. On failure → AI bubble: "Could not reach Gemini — try again in a moment."
+
+`ChatMessage` IDs generated via `chatMessageIdRef` so React keys stay stable across re-renders (no `Date.now()` — banned in this app and would break keys on multi-message bursts).
+
+### 5. RouteSheet conversational input removed
+
+[src/components/RouteSheet.tsx](src/components/RouteSheet.tsx):
+
+- Dropped props: `onSubmitPreference`, `geminiBusy`, `overridePreferenceText`.
+- Dropped state: `preferenceInput`.
+- Dropped handler: `handlePreferenceSubmit`.
+- Dropped JSX: the `<form>` between filter pills and routes list (input + send button).
+- Dropped now-unused helpers: `SendIcon`, `SmallSpinner`.
+
+App.tsx also dropped both `onSubmitPreference={handleSubmitPreference}` + `geminiBusy={geminiBusy}` + `overridePreferenceText={...}` props from both RouteSheet mounts.
+
+### 6. Demo sequence — t=46 AI chat panel
+
+App.tsx `runDemoSequence`:
+
+- New state cleared at sequence start: `setChatOpen(false)`, `setChatMessages([])`.
+- t=40 (previous typewriter step) removed.
+- **t=46 s**: clears `chatMessages`, opens panel, waits 400 ms for slide-in, then typewriters "It's hot outside, keep me in the shade" at 50 ms/char into the panel's textarea via `overrideText`. ~150 ms after last char, calls `handleSubmitPreference(fullText)` — which pushes the user bubble + (after Gemini returns) the AI reasoning bubble.
+- **t=51 s**: `setChatOpen(false)` — panel slides down so the t=52 nav sim has the screen.
+
+### Files touched
+
+- New: [src/components/AIChatButton.tsx](src/components/AIChatButton.tsx), [src/components/AIChatPanel.tsx](src/components/AIChatPanel.tsx).
+- Updated: [src/lib/geminiRouting.ts](src/lib/geminiRouting.ts) (schema + parser + mapInterpretation), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) (input removed), [src/styles/globals.css](src/styles/globals.css) (typing-dot keyframe), [src/App.tsx](src/App.tsx) (chat state + handler refactor + mount + demo step).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.49 MB main chunk, ~20 s)

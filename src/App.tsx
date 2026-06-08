@@ -24,6 +24,8 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { StartButton } from './components/StartButton';
 import { MapTapPopup } from './components/MapTapPopup';
 import { VersionLabel } from './components/VersionLabel';
+import { AIChatButton } from './components/AIChatButton';
+import { AIChatPanel, type ChatMessage } from './components/AIChatPanel';
 import { DemoButton } from './components/DemoButton';
 import { DemoWatermark } from './components/DemoWatermark';
 import { DemoIntroOverlay } from './components/DemoIntroOverlay';
@@ -173,12 +175,25 @@ export default function App() {
   // as noise on a recording.
   const [demoIntroVisible, setDemoIntroVisible] = useState(false);
   const [glarePulsePhase, setGlarePulsePhase] = useState(0);
-  // Typewriter override pushed into RouteSheet's preference input
-  // during the AI demo step. Null means "let the user's normal typed
-  // value through"; any string forces the input to display that text.
+  // Typewriter override pushed into the AI chat panel's input during
+  // the AI demo step (t=46 s). Null means "let the user's normal
+  // typed value through"; any string forces the input to display it.
   const [demoTypewriterText, setDemoTypewriterText] = useState<string | null>(
     null,
   );
+
+  // ---- AI chat state -----------------------------------------------
+  // Floating dark-glass chat panel that replaces the inline routing-
+  // preference input that used to live inside RouteSheet. The panel
+  // owns its own input field; App.tsx owns the message history + the
+  // submit handler that calls Gemini and threads the response back.
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const chatMessageIdRef = useRef(0);
+  const nextChatId = useCallback(() => {
+    chatMessageIdRef.current += 1;
+    return chatMessageIdRef.current;
+  }, []);
   const glarePulseRafRef = useRef<number | null>(null);
   const demoHourRafRef = useRef<number | null>(null);
 
@@ -1195,38 +1210,65 @@ export default function App() {
     setIntensityMultiplier(1.0);
   };
 
-  // Conversational preference → Gemini → mapped FilterMode + intensity.
-  // On any failure (no key, HTTP error, malformed JSON, schema mismatch)
-  // we leave the existing filter in place and surface a fallback toast.
-  const handleSubmitPreference = async (text: string) => {
-    setGeminiBusy(true);
-    try {
-      const response = await interpretPreference(text, {
-        weather: weather ?? null,
-        cloudCoverPct,
-        sunElevationDeg: solar.elevationDeg,
-        currentTime: effectiveTime,
-      });
-      if (!response) {
-        setToastMessage('Could not reach Gemini — try again');
-        return;
+  // Chat-panel submit handler. Pushes the user message into history
+  // immediately, fires Gemini, then pushes either the routing reasoning
+  // or the QA answer back into history (and applies the filter if it
+  // was a routing intent). Wraps the original toast-based handler
+  // semantics with chat-bubble UX.
+  const handleSubmitPreference = useCallback(
+    async (text: string) => {
+      // 1. User bubble lands immediately so the user sees their input
+      //    confirmed regardless of network latency.
+      setChatMessages((prev) => [
+        ...prev,
+        { id: nextChatId(), role: 'user', text },
+      ]);
+      setGeminiBusy(true);
+      try {
+        const response = await interpretPreference(text, {
+          weather: weather ?? null,
+          cloudCoverPct,
+          sunElevationDeg: solar.elevationDeg,
+          currentTime: effectiveTime,
+        });
+        if (!response) {
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: nextChatId(),
+              role: 'ai',
+              text: 'Could not reach Gemini — try again in a moment.',
+            },
+          ]);
+          return;
+        }
+        if (response.mode === 'routing') {
+          const mapped = mapInterpretation(response.interpretation);
+          setFilterMode(mapped.filterMode);
+          setIntensityMultiplier(mapped.intensityMultiplier);
+          setChatMessages((prev) => [
+            ...prev,
+            { id: nextChatId(), role: 'ai', text: response.reasoning },
+          ]);
+          return;
+        }
+        // QA intent.
+        setChatMessages((prev) => [
+          ...prev,
+          { id: nextChatId(), role: 'ai', text: response.answer },
+        ]);
+      } finally {
+        setGeminiBusy(false);
       }
-      if (response.mode === 'routing') {
-        // Routing intent — remap to a FilterMode + intensity bump.
-        const mapped = mapInterpretation(response.interpretation);
-        setFilterMode(mapped.filterMode);
-        setIntensityMultiplier(mapped.intensityMultiplier);
-        setToastMessage(mapped.toastMessage);
-        return;
-      }
-      // Q&A intent — Gemini already wrote a context-grounded answer.
-      // Surface it as a toast (keeps the chat surface lightweight; the
-      // confidence range stays in the conversation history).
-      setToastMessage(response.answer);
-    } finally {
-      setGeminiBusy(false);
-    }
-  };
+    },
+    [
+      cloudCoverPct,
+      effectiveTime,
+      nextChatId,
+      solar.elevationDeg,
+      weather,
+    ],
+  );
 
   // ---- Demo Mode scripted sequence ----------------------------------
   // 45 s scripted walkthrough for the recorded promo video. Activated
@@ -1262,6 +1304,8 @@ export default function App() {
     setDemoLiveCoord(null);
     setGlarePulsePhase(0);
     setDemoTypewriterText(null);
+    setChatOpen(false);
+    setChatMessages([]);
     legendShownForRouteRef.current = null; // force legend to re-show
 
     const schedule = (delayMs: number, fn: () => void) => {
@@ -1386,42 +1430,46 @@ export default function App() {
     // ─── t = 35 s : sunny spot — yellow stars overlay ──────────
     schedule(35_000, () => setFilterMode('sunny-spot'));
 
-    // ─── t = 40 s : AI / Gemini — typewriter input + submit ────
-    // Character-by-character typewriter animation (50 ms per char)
-    // shows the natural-language flow landing in the conversational
-    // input, then auto-submits to Gemini. The override prop into
-    // RouteSheet's input swaps the displayed value while we type;
-    // the input is `disabled` during the override so the caret
-    // doesn't fight the animation. After the full string is in
-    // place we wait one tick, fire the submit, then clear the
-    // override so the input goes back to normal user-controlled.
-    schedule(40_000, () => {
-      const fullText = 'I am walking to a meeting in a suit';
+    // ─── t = 46 s : AI chat panel — open + typewriter + submit ─
+    // Opens the dark-glass chat panel, types the prompt character
+    // by character (50 ms/char) into its textarea via the
+    // overrideText prop, submits to Gemini, lets the reply land
+    // in the history as a bubble, then closes the panel ~5 s
+    // later so the demo can proceed to the navigation simulation
+    // at t=52. Clear the chat history at the start so previous
+    // demo runs don't bleed in.
+    schedule(46_000, () => {
+      setChatMessages([]);
+      setChatOpen(true);
+      const fullText = "It's hot outside, keep me in the shade";
+      // Start typing 400 ms after the panel slides up so the viewer
+      // sees the empty chat surface settle first.
+      const TYPE_START = 400;
       setDemoTypewriterText('');
       for (let i = 1; i <= fullText.length; i++) {
-        const delay = i * 50;
         const id = window.setTimeout(() => {
           setDemoTypewriterText(fullText.slice(0, i));
-        }, delay);
+        }, TYPE_START + i * 50);
         demoTimeoutsRef.current.push(id);
       }
-      // Submit ~150 ms after the last keystroke so the viewer sees
-      // the full sentence settle before the busy spinner appears.
-      const submitId = window.setTimeout(
-        () => {
-          void handleSubmitPreference(fullText);
-          // Release the override so the input goes back to normal
-          // control once the demo step is complete.
-          const releaseId = window.setTimeout(
-            () => setDemoTypewriterText(null),
-            1_500,
-          );
-          demoTimeoutsRef.current.push(releaseId);
-        },
-        fullText.length * 50 + 150,
-      );
+      const submitDelay = TYPE_START + fullText.length * 50 + 150;
+      const submitId = window.setTimeout(() => {
+        void handleSubmitPreference(fullText);
+        // Release the override so the chat input goes back to the
+        // user's own state once the demo step is complete.
+        const releaseId = window.setTimeout(
+          () => setDemoTypewriterText(null),
+          300,
+        );
+        demoTimeoutsRef.current.push(releaseId);
+      }, submitDelay);
       demoTimeoutsRef.current.push(submitId);
     });
+
+    // ─── t = 51 s : close the chat panel ────────────────────────
+    // Gives the Gemini reasoning bubble time to land before the
+    // panel slides away. Nav sim takes over at t=52.
+    schedule(51_000, () => setChatOpen(false));
 
     // ─── t = 52 s : navigation simulation (6 s walk) ───────────
     // Shorter than the prior 8 s so the simulated nav ends at
@@ -1838,8 +1886,6 @@ export default function App() {
           onDismiss={() => setDestination(null)}
           isLoading={routesLoading}
           dayColor={daylight.color}
-          onSubmitPreference={handleSubmitPreference}
-          geminiBusy={geminiBusy}
           precipitationProbability={weather?.precipitationProbability ?? 0}
           precipitationType={weather?.precipitationType ?? 'none'}
           windSpeedMph={weather?.windSpeedMph ?? 0}
@@ -1855,7 +1901,6 @@ export default function App() {
           }
           legendSnow={weather?.precipitationType === 'snow'}
           selectedRouteBreakdown={selectedRouteBreakdown}
-          overridePreferenceText={demoTypewriterText}
         />
       )}
       {!useSidebar && (
@@ -1931,6 +1976,22 @@ export default function App() {
           coloredSegments != null &&
           coloredSegments.length > 0
         }
+      />
+
+      {/* AI chat — floating amber FAB bottom-right; tapping opens
+       * the dark-glass chat panel. Replaces the inline routing-
+       * preference input that used to live in RouteSheet. */}
+      <AIChatButton
+        visible={!navigating && !chatOpen}
+        onClick={() => setChatOpen(true)}
+      />
+      <AIChatPanel
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        onSubmit={handleSubmitPreference}
+        messages={chatMessages}
+        busy={geminiBusy}
+        overrideText={demoTypewriterText}
       />
 
       {/* Persistent "?" route-color legend button — bottom-left.
@@ -2063,8 +2124,6 @@ export default function App() {
             onDismiss={() => setDestination(null)}
             isLoading={routesLoading}
             dayColor={daylight.color}
-            onSubmitPreference={handleSubmitPreference}
-            geminiBusy={geminiBusy}
             precipitationProbability={weather?.precipitationProbability ?? 0}
             precipitationType={weather?.precipitationType ?? 'none'}
             windSpeedMph={weather?.windSpeedMph ?? 0}
@@ -2080,7 +2139,6 @@ export default function App() {
             }
             legendSnow={weather?.precipitationType === 'snow'}
             selectedRouteBreakdown={selectedRouteBreakdown}
-            overridePreferenceText={demoTypewriterText}
           />
         )}
         <StartButton

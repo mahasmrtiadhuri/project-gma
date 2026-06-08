@@ -198,14 +198,6 @@ export interface RouteSheetProps {
   /** Live time-of-day color used for sun-accent filter pills + Start button. */
   dayColor: RGB;
   /**
-   * Submit a free-text preference to the Gemini interpreter. The host
-   * (App.tsx) decides what to do with the response — update filter,
-   * fire a toast, etc. Returns once the interpretation has completed.
-   */
-  onSubmitPreference: (text: string) => Promise<void>;
-  /** True while a Gemini call is in flight — disables the input + button. */
-  geminiBusy: boolean;
-  /**
    * Live precipitation probability 0..100. Drives whether the
    * "Avoid Rain" filter pill is rendered (only at > 20 %).
    */
@@ -247,16 +239,6 @@ export interface RouteSheetProps {
    * level, so the bar shows only on the selected card.
    */
   selectedRouteBreakdown?: SegmentBreakdown | null;
-  /**
-   * Demo-driven override for the conversational input. When non-null,
-   * the input visually displays this text instead of the user's typed
-   * value (which is preserved separately so a manual edit isn't lost
-   * across an override window). The demo scheduler uses this to drive
-   * a typewriter animation showing Gemini-style "I am walking to a
-   * meeting in a suit" landing character-by-character before the
-   * scheduler itself calls `onSubmitPreference(...)`.
-   */
-  overridePreferenceText?: string | null;
 }
 
 /**
@@ -273,8 +255,6 @@ export function RouteSheet({
   onDismiss,
   isLoading,
   dayColor,
-  onSubmitPreference,
-  geminiBusy,
   precipitationProbability,
   precipitationType,
   windSpeedMph,
@@ -283,7 +263,6 @@ export function RouteSheet({
   legendSnow = false,
   embedded = false,
   selectedRouteBreakdown = null,
-  overridePreferenceText = null,
 }: RouteSheetProps) {
   const dayAccent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   const sunDirection = filterToSunDirection(filterMode);
@@ -291,7 +270,6 @@ export function RouteSheet({
     filterMode === 'avoid-sun' || filterMode === 'avoid-both';
   const isWindFilter = filterMode === 'avoid-wind';
   const isRainFilter = filterMode === 'avoid-rain';
-  const [preferenceInput, setPreferenceInput] = useState('');
   const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   // Hide the Avoid Rain pill when probability is too low to matter.
@@ -303,16 +281,6 @@ export function RouteSheet({
       precipitationProbability >= RAIN_PILL_MIN_PROBABILITY ||
       filterMode === 'avoid-rain',
   );
-
-  const handlePreferenceSubmit = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    const trimmed = preferenceInput.trim();
-    if (!trimmed || geminiBusy) return;
-    await onSubmitPreference(trimmed);
-    setPreferenceInput('');
-  };
 
   // Warn when every route in the result set is "mostly sunny" — exposure
   // above the 0.7 threshold — for cooler-preferring filters. Tells the
@@ -435,47 +403,10 @@ export function RouteSheet({
         />
       </div>
 
-      <form
-        onSubmit={handlePreferenceSubmit}
-        className="mx-3 mb-3 flex shrink-0 items-center gap-2"
-        aria-label="Describe your routing preference"
-      >
-        <input
-          type="text"
-          // Override wins while non-null (demo typewriter); otherwise
-          // the field is fully controlled by `preferenceInput`. The
-          // user's typed value is preserved across an override window
-          // because we only swap the displayed value, not the
-          // underlying state.
-          value={overridePreferenceText ?? preferenceInput}
-          onChange={(event) => setPreferenceInput(event.target.value)}
-          placeholder="e.g. I'm walking in a suit"
-          // Disabled during demo-driven typing too so the cursor /
-          // caret doesn't fight the typewriter animation.
-          disabled={geminiBusy || overridePreferenceText != null}
-          maxLength={140}
-          className="h-11 flex-1 rounded-full px-4 text-sm outline-none placeholder:text-[var(--gma-text-muted)] disabled:opacity-60"
-          style={{
-            background: 'var(--gma-input-bg)',
-            border: '1px solid var(--gma-input-border)',
-            color: 'var(--gma-text-primary)',
-          }}
-          aria-label="Routing preference"
-        />
-        <button
-          type="submit"
-          disabled={geminiBusy || preferenceInput.trim().length === 0}
-          className="gma-press flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-40"
-          style={{
-            background: dayAccent,
-            color: 'var(--gma-text-on-accent)',
-            boxShadow: 'var(--gma-glow-amber)',
-          }}
-          aria-label={geminiBusy ? 'Interpreting…' : 'Send to Gemini'}
-        >
-          {geminiBusy ? <SmallSpinner /> : <SendIcon />}
-        </button>
-      </form>
+      {/* Conversational input was removed in the 2026-06-08 chat-panel
+       * pass — natural-language routing now lives in the AIChatPanel
+       * floating bottom-right of the map. RouteSheet stays focused on
+       * filter pills + route cards + Start. */}
 
       <div
         className="flex-1 overflow-y-auto"
@@ -1540,35 +1471,6 @@ function SkeletonRouteCard() {
         style={{ background: 'var(--gma-hover-bg)' }}
       />
     </div>
-  );
-}
-
-function SendIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
-    </svg>
-  );
-}
-
-function SmallSpinner() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      className="animate-spin"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
-      <path
-        d="M12 2a10 10 0 0 1 10 10"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 

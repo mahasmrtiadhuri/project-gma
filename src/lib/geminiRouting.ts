@@ -17,12 +17,24 @@ import type { WeatherSnapshot } from '../hooks/useWeatherData';
 
 export type SunPreference = 'avoid_sun' | 'want_sun' | 'neutral';
 export type WindPreference = 'avoid_wind' | 'neutral';
+export type RainPreference = 'avoid_rain' | 'neutral';
 export type Intensity = 'low' | 'medium' | 'high';
+export type Urgency = 'low' | 'medium' | 'high';
 
 export interface GeminiInterpretation {
   sunPreference: SunPreference;
   windPreference: WindPreference;
+  /** Whether the user prefers to avoid wet streets / driving rain. */
+  rainPreference: RainPreference;
+  /** Strength of the preference set above (low/medium/high). */
   intensity: Intensity;
+  /**
+   * How time-sensitive the user is. high = "running late", which the
+   * scorer should weigh against comfort. Currently stored but not
+   * yet folded into the HLCI weights — surfaced in the chat bubble
+   * so the user can see Gemini understood the urgency cue.
+   */
+  urgency: Urgency;
 }
 
 /**
@@ -40,10 +52,16 @@ export interface GeminiContext {
 /**
  * Discriminated union — routing preference gets remapped to a
  * FilterMode + intensity by `mapInterpretation`; qa answer flows
- * straight to the toast.
+ * straight to the chat panel as the AI bubble text. `reasoning` is
+ * always populated on routing responses so the chat panel can show
+ * a natural-language summary alongside the silent route update.
  */
 export type GeminiResponse =
-  | { mode: 'routing'; interpretation: GeminiInterpretation }
+  | {
+      mode: 'routing';
+      interpretation: GeminiInterpretation;
+      reasoning: string;
+    }
   | { mode: 'qa'; answer: string };
 
 export interface MappedPreference {
@@ -88,9 +106,20 @@ const RESPONSE_SCHEMA = {
       type: 'STRING',
       enum: ['avoid_wind', 'neutral'],
     },
+    rainPreference: {
+      type: 'STRING',
+      enum: ['avoid_rain', 'neutral'],
+    },
     intensity: {
       type: 'STRING',
       enum: ['low', 'medium', 'high'],
+    },
+    urgency: {
+      type: 'STRING',
+      enum: ['low', 'medium', 'high'],
+    },
+    reasoning: {
+      type: 'STRING',
     },
     answer: {
       type: 'STRING',
@@ -131,11 +160,19 @@ function buildSystemInstruction(ctx: GeminiContext): string {
     '',
     'Decide whether the user is:',
     '  (A) Describing a physical context or routing preference',
-    '      (e.g. "I am in a suit", "find me sun", "cycling to work").',
-    '      In that case set mode="routing" and fill out sunPreference',
-    '      (avoid_sun | want_sun | neutral), windPreference',
-    '      (avoid_wind | neutral), and intensity (low | medium | high).',
-    '      Do NOT fill out `answer`.',
+    '      (e.g. "I am in a suit, it is hot, slight drizzle, running late",',
+    '      "find me sun", "cycling to work"). Extract EVERY signal you',
+    '      can find and set mode="routing". Fill out:',
+    '        - sunPreference: avoid_sun | want_sun | neutral',
+    '        - windPreference: avoid_wind | neutral',
+    '        - rainPreference: avoid_rain | neutral',
+    '        - intensity: low | medium | high  (how strong the preference)',
+    '        - urgency: low | medium | high    (how time-pressed the user is)',
+    '      And ALWAYS fill `reasoning` with a friendly 1–2 sentence',
+    '      summary of WHAT you extracted and HOW the route will be',
+    '      optimized (e.g. "Got it — you need shade from the heat, rain',
+    '      shelter from the drizzle, and the fastest comfortable route.',
+    '      Routing for maximum shade and rain cover."). Do NOT fill `answer`.',
     '',
     '  (B) Asking a general question about current conditions',
     '      (e.g. "what is the weather like?", "is it good for cycling?",',
@@ -250,13 +287,30 @@ function parseGeminiResponse(obj: unknown): GeminiResponse | null {
   const mode = o.mode;
   if (mode === 'routing') {
     if (!isValidInterpretation(o)) return null;
+    // Reasoning is required for routing mode (the chat bubble text),
+    // but be lenient — if Gemini forgets it we synthesize a default
+    // so the UX still works.
+    const reasoning =
+      typeof o.reasoning === 'string' && o.reasoning.trim().length > 0
+        ? o.reasoning.trim()
+        : 'Got it — updating your route.';
     return {
       mode: 'routing',
       interpretation: {
         sunPreference: o.sunPreference,
         windPreference: o.windPreference,
+        // Default rain/urgency to neutral/low when Gemini omits them
+        // (back-compat with prior responses that didn't include
+        // these new fields).
+        rainPreference:
+          o.rainPreference === 'avoid_rain' ? 'avoid_rain' : 'neutral',
         intensity: o.intensity,
+        urgency:
+          o.urgency === 'high' || o.urgency === 'medium' || o.urgency === 'low'
+            ? o.urgency
+            : 'low',
       },
+      reasoning,
     };
   }
   if (mode === 'qa') {
@@ -298,12 +352,20 @@ export function mapInterpretation(interp: GeminiInterpretation): MappedPreferenc
   const wantsAvoidSun = interp.sunPreference === 'avoid_sun';
   const wantsSun = interp.sunPreference === 'want_sun';
   const wantsAvoidWind = interp.windPreference === 'avoid_wind';
+  const wantsAvoidRain = interp.rainPreference === 'avoid_rain';
 
   let filterMode: FilterMode;
-  // Human-readable feels-like phrasing with a matching emoji. Replaces
-  // the previous abstract "routing for X" verbs.
   let toastMessage: string;
 
+  // Priority for FilterMode resolution when multiple preferences fire:
+  //   1. want_sun     → 'sunniest' (overrides everything; user explicitly
+  //                      asked for sun even if it's wet/windy).
+  //   2. avoid_sun + avoid_wind  → 'avoid-both'
+  //   3. avoid_sun    → 'avoid-sun'
+  //   4. avoid_rain   → 'avoid-rain'  (rain comes before plain wind since
+  //                      getting soaked is the more immediate discomfort).
+  //   5. avoid_wind   → 'avoid-wind'
+  //   6. neutral      → 'no-preference'
   if (wantsSun) {
     filterMode = 'sunniest';
     toastMessage = 'Got it — finding you the sunniest route ☀️';
@@ -319,6 +381,12 @@ export function mapInterpretation(interp: GeminiInterpretation): MappedPreferenc
       interp.intensity === 'high'
         ? 'Got it — finding you the coolest route 🌳'
         : 'Got it — finding shadier streets 🌳';
+  } else if (wantsAvoidRain) {
+    filterMode = 'avoid-rain';
+    toastMessage =
+      interp.intensity === 'high'
+        ? 'Got it — finding you the driest route 💧'
+        : 'Got it — finding rain-sheltered streets 💧';
   } else if (wantsAvoidWind) {
     filterMode = 'avoid-wind';
     toastMessage =
@@ -330,7 +398,13 @@ export function mapInterpretation(interp: GeminiInterpretation): MappedPreferenc
     toastMessage = 'Got it — no specific preference';
   }
 
-  const intensityMultiplier = interp.intensity === 'high' ? 1.5 : 1.0;
+  // intensity high bumps the weight multiplier; urgency high adds
+  // a small extra bump on top (route-time matters more so the
+  // shorter alternative wins ties).
+  let intensityMultiplier = interp.intensity === 'high' ? 1.5 : 1.0;
+  if (interp.urgency === 'high') {
+    intensityMultiplier *= 0.85; // damp comfort weights so duration wins ties
+  }
 
   return {
     interpretation: interp,
