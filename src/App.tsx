@@ -1244,6 +1244,21 @@ export default function App() {
         }
         if (response.mode === 'routing') {
           const mapped = mapInterpretation(response.interpretation);
+          // Debug: trace the Gemini → filter-mode pipeline. If
+          // `filterMode` doesn't visibly change in the UI after this
+          // log fires, the bug is downstream of the setters (result
+          // memo, route re-ranking, or coloring) rather than in this
+          // handler.
+          console.log('[GMA] Gemini routing intent', {
+            input: text,
+            interpretation: response.interpretation,
+            mappedFilterMode: mapped.filterMode,
+            mappedIntensityMultiplier: mapped.intensityMultiplier,
+            reasoning: response.reasoning,
+          });
+          console.log(
+            `[GMA] setFilterMode(${mapped.filterMode}) + setIntensityMultiplier(${mapped.intensityMultiplier})`,
+          );
           setFilterMode(mapped.filterMode);
           setIntensityMultiplier(mapped.intensityMultiplier);
           setChatMessages((prev) => [
@@ -1252,6 +1267,10 @@ export default function App() {
           ]);
           return;
         }
+        console.log('[GMA] Gemini QA intent (route unchanged)', {
+          input: text,
+          answer: response.answer,
+        });
         // QA intent.
         setChatMessages((prev) => [
           ...prev,

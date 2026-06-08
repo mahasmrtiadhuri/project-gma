@@ -4226,3 +4226,57 @@ App.tsx `runDemoSequence`:
 
 - `tsc -b` clean
 - `vite build` clean (~1.49 MB main chunk, ~20 s)
+
+---
+
+## 2026-06-08 — Chat→route wiring debug logs + legend moved top-left
+
+### Fix 1: AI chat → route update diagnostics ([src/App.tsx](src/App.tsx))
+
+User reported the route stayed visually unchanged after Gemini responded in the AI chat panel. Audited the full pipeline end-to-end and confirmed the wiring IS correct:
+
+1. `handleSubmitPreference` (line ~1218) calls `setFilterMode(mapped.filterMode)` and `setIntensityMultiplier(mapped.intensityMultiplier)` on a routing intent.
+2. `useEffect` (line 549) watches `filterMode` and resets `selectedRouteIdx` to 0 so the new top-ranked route is auto-selected.
+3. `result` `useMemo` (line 937) has both `filterMode` and `intensityMultiplier` in deps and re-ranks via `scoreAndRankRoutes(candidates, scaleWeights(baseWeights, intensityMultiplier), …)`.
+4. `coloringMode` derives from `filterMode` (line 1014) so `colorizeRoute` re-paints whenever the mode changes.
+5. `geminiBusy` flag passed through to `AIChatPanel` for the typing indicator.
+
+Since the wiring is correct, the perceived "no change" is most likely one of:
+- Gemini classifying the input as `qa` instead of `routing` (no routing fields → filter stays put).
+- `mapInterpretation` returning the same `filterMode` the user already had selected.
+- The new top-ranked route happening to be the same polyline as before for that origin/destination.
+
+To confirm at runtime, `handleSubmitPreference` now emits three console logs per submit:
+
+```typescript
+// On routing intent:
+console.log('[GMA] Gemini routing intent', {
+  input, interpretation, mappedFilterMode,
+  mappedIntensityMultiplier, reasoning,
+});
+console.log(
+  `[GMA] setFilterMode(${mapped.filterMode}) + setIntensityMultiplier(${mapped.intensityMultiplier})`,
+);
+
+// On QA intent (no route change expected):
+console.log('[GMA] Gemini QA intent (route unchanged)', { input, answer });
+```
+
+Next session can read the console transcript and see exactly which branch fires + what filterMode landed.
+
+### Fix 2: PersistentMapLegend → top-left of map area ([src/components/PersistentMapLegend.tsx](src/components/PersistentMapLegend.tsx))
+
+The legend card was overlapping the SunCompass at bottom-left. Moved from `left: 380px, bottom: 16px` to `left: 396px, top: 16px` — top-left of the map canvas, just inside the sidebar boundary, clear of every other overlay.
+
+Also made it more compact while there (option B from spec was top-left, applied the bottom-padding/font reductions from option A on top so it reads as a denser chip):
+- Padding: `px-3 py-2.5` → `px-2.5 py-2`
+- Body text: 12px → 11px
+- Header bottom margin: `mb-1.5` → `mb-1`
+- Row gap: `gap-1.5` → `gap-1`
+- `minWidth`: 232px → 216px
+
+Kept the slate-700 palette + DM-Mono "Legend" header + four entries (glare hotspot, tree canopy, sunny segment, shaded segment) — only positioning and density changed.
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (only the existing >500 kB chunk advisory)

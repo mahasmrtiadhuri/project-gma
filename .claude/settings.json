@@ -9,7 +9,8 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(grep -n \"filterMode={filterMode}$\" src/components/RouteSheet.tsx)",
-      "Bash(powershell -Command \"\\(Get-Content src/components/RouteSheet.tsx -Raw\\) -replace 'rgb\\\\\\(30, 120, 60\\\\\\)', 'rgb\\(5, 150, 105\\)' | Set-Content src/components/RouteSheet.tsx -NoNewline\")"
+      "Bash(powershell -Command \"\\(Get-Content src/components/RouteSheet.tsx -Raw\\) -replace 'rgb\\\\\\(30, 120, 60\\\\\\)', 'rgb\\(5, 150, 105\\)' | Set-Content src/components/RouteSheet.tsx -NoNewline\")",
+      "Bash(powershell -c \"\\(Get-Content PROGRESS.md | Measure-Object -Line\\).Lines\")"
     ]
   }
 }
