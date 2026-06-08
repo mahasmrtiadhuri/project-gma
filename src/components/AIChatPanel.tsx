@@ -75,7 +75,12 @@ export function AIChatPanel({
         right: '16px',
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
         width: 'min(380px, calc(100vw - 32px))',
-        height: 'min(480px, calc(100vh - 32px))',
+        // Taller panel (was 480 px) so a long typed prompt AND the
+        // AI's reasoning bubble both fit in the history area
+        // simultaneously — the demo's t=22 → t=35 hero beat needs
+        // both visible in one screenshot. Clamps to viewport so
+        // short screens still see the composer.
+        height: 'min(620px, calc(100vh - 32px))',
         zIndex: 100,
         background: 'rgba(15, 23, 42, 0.95)',
         backdropFilter: 'blur(20px) saturate(140%)',

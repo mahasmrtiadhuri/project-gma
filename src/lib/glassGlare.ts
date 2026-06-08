@@ -84,6 +84,24 @@ const KNOWN_GLASS_TOWERS = [
   'exxon building',
   'mcgraw hill building',
   'mcgraw-hill building',
+  // 2026-06-08 (Flatiron → Union Sq demo): glass mid-rises along
+  // Broadway between Flatiron and Union Square that drive the glare
+  // narrative in the new demo corridor. The Flatiron itself is
+  // limestone (not glass) so we don't add it — these are the
+  // genuinely glass-clad neighbors whose reflections land on the
+  // sidewalk segments the demo route traverses.
+  'one madison',
+  'one madison park',
+  '50 madison',
+  '277 fifth avenue',
+  '277 fifth',
+  '15 union square west',
+  '15 union square',
+  'zeckendorf towers',
+  '1 union square south',
+  '4 union square south',
+  '11 madison',
+  '11 madison avenue',
 ];
 
 const UNTAGGED_MODERN_GLASS_PROBABILITY = 0.3;

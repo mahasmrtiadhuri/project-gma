@@ -1388,29 +1388,33 @@ export default function App() {
   );
 
   // ---- Demo Mode scripted sequence ----------------------------------
-  // 68 s final-cut feature tour. Route: 1251 Avenue of the Americas
-  // → Chrysler Building (a Midtown diagonal that passes Bank of
-  // America Tower, the McGraw-Hill Building, Bryant Park's tree
-  // canopy, and the Chrysler Building's spire — every classifier
-  // branch fires along this corridor at 2 PM).
+  // 60 s scripted promo cut. Route: 1251 Avenue of the Americas →
+  // Chrysler Building. Hero moment is t=6 → t=30: a long detailed
+  // typewriter prompt lands, auto-submits, fields fill with amber
+  // flash, routes appear, AI reasoning bubble shows. Chat STAYS OPEN
+  // until t=35 so the conversation is visible in the recording.
   //
-  //   0-3s   Empty start, framed on the Midtown corridor at 2 PM.
-  //   3-18s  One Prompt — chat opens, typewriter (50 ms/char), submit.
-  //   18-24s AI fills fields (amber flash) + routes load (or fallback).
-  //   24-28s Chat closes, route sheet shows 3 cards under Avoid Sun.
-  //   28-33s All 3 polylines visible at z=16 — blue shaded vs amber
-  //          sunny segments read clearly across the corridor.
-  //   33-39s Time slider animates 8 AM → 2 PM; glare hotspots appear
-  //          around BoA Tower + glass neighbors and pulse.
-  //   39-43s Zoom into Bryant Park (z=17); tree-canopy toast.
-  //   43-56s Filter Tour — wind → sunny-spot → avoid-both → avoid-sun.
-  //   56-62s Glare close-up on GMA Pick (z=18) with BoA-Tower toast.
-  //   62-68s Beauty shot pull-out (z=14): full corridor, all glare
-  //          hotspots, tree canopy, 3 route polylines, street overlay.
+  //   0-3s   Empty start, framed on Midtown corridor at 2 PM.
+  //   3s     AI chat panel opens (empty composer).
+  //   6-22s  Typewriter (50 ms/char) on the long contextual prompt.
+  //   22s    Auto-submit + deterministic field-fill — origin and
+  //          destination flash amber and fill immediately so the
+  //          visual is anchored exactly to t=22 regardless of Gemini
+  //          latency. Filter forced to Avoid Sun. AI flow runs in
+  //          parallel for the reasoning bubble.
+  //   26s    Routes load + per-card breakdown bars visible.
+  //   30s    AI reasoning bubble visible in chat alongside the user
+  //          message bubble — the hero "conversation visible" beat.
+  //   35s    Chat closes; map shows full route + all overlays.
+  //   40-44s Time slider animates 8 AM → 2 PM; more glare hotspots.
+  //   46s    Filter → avoid-wind.
+  //   50s    Filter → sunny-spot.
+  //   54s    Filter → avoid-sun + camera pulls out to z=14 beauty shot.
+  //   60s    Silent end. Start Demo reappears.
   //
   // Solar time is locked to 2 PM throughout. Navigation mode is never
-  // entered. Pre-set origin/destination at t=0 acts as a fallback so
-  // the demo always shows a route even if Gemini / geocoding fails.
+  // entered. Field-fill at t=22 is deterministic (not gated on Gemini)
+  // so the visual lands exactly on cue regardless of network latency.
   const runDemoSequence = useCallback(() => {
     console.log('[GMA] Demo sequence starting');
     setDemoRunning(true);
@@ -1444,32 +1448,25 @@ export default function App() {
     };
 
     // ─── Demo route: 1251 Avenue of the Americas → Chrysler Bldg ──
-    // The corridor (~1 km diagonal SE) crosses Bryant Park, passes
-    // Bank of America Tower's glass facade, and ends at the spire of
-    // the Chrysler Building. Exercises every classifier: glass-glare,
-    // tree canopy, sunny street, shaded street, Venturi wind canyon.
+    // Midtown diagonal: 1251 Sixth Ave (Exxon Building) southeast
+    // across the Bryant-Park / 42nd-Street corridor to the Chrysler
+    // spire. Camera midpoint slightly east of route midpoint so the
+    // Chrysler reads at the SE edge.
     const ORIGIN_POINT = { lat: 40.7594, lng: -73.9812 };
-    const ORIGIN_LABEL = '1251 Avenue of the Americas';
+    // Labels match the format the Gemini extractor would return
+    // (place name + ", New York"). Keeping them in sync prevents an
+    // AI re-extraction at ~t=24 from triggering a second amber flash.
+    const ORIGIN_LABEL = '1251 Avenue of the Americas, New York';
     const DESTINATION_POINT = { lat: 40.7516, lng: -73.9755 };
-    const DESTINATION_LABEL = 'Chrysler Building';
-    // Camera framing per spec: lng -73.9790, lat 40.7555 — slightly
-    // east of the route midpoint so the Chrysler spire reads at the
-    // SE edge of the frame and BoA Tower at the NW.
+    const DESTINATION_LABEL = 'Chrysler Building, New York';
     const FRAME_LAT = 40.7555;
     const FRAME_LNG = -73.979;
-    const BRYANT_PARK_LAT = 40.7536;
-    const BRYANT_PARK_LNG = -73.9832;
 
     // ─── Cinematic intro: 2 s white title card ─────────────────
     setDemoIntroVisible(true);
     schedule(1_600, () => setDemoIntroVisible(false));
 
-    // ─── t = 0 s : empty fields, framed on the Midtown corridor ──
-    // Visual state per spec: empty origin/destination inputs, clean
-    // map at z=15 / pitch 30, time locked to 2 PM. The AI chat at
-    // t=3 → t=18 will fill the fields; if Gemini or geocoding fails,
-    // a fallback at t=20 force-sets ORIGIN_POINT / DESTINATION_POINT
-    // so the route still appears for the rest of the sequence.
+    // ─── t = 0 s : empty fields, framed on Midtown corridor ────
     setOrigin(null);
     setDestination(null);
     setMapView('2d');
@@ -1490,47 +1487,57 @@ export default function App() {
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
 
-    // Single source of truth for the demo prompt so the typewriter
-    // and the auto-submit can never drift apart. Per the final spec,
-    // the prompt only names the origin and destination — no body
-    // context, no comfort preferences (the avoid-sun filter is
-    // applied independently at t=20 s by the fallback path so the
-    // demo still showcases the shade-routing feature).
+    // The long contextual prompt that drives the hero moment.
+    // Mentions origin + destination by name AND the body context
+    // (heat exhaustion, wool suit, cardboard model) so Gemini
+    // extracts everything in one shot. The submit at t=22 fires
+    // this AND deterministically force-fills the fields in parallel.
     const DEMO_PROMPT =
-      "I'm at 1251 Avenue of the Americas going to the Chrysler Building.";
+      "I'm running late to an executive presentation in a heavy wool " +
+      'suit. I need to walk from 1251 Avenue of the Americas to the ' +
+      "Chrysler Building. I'm carrying a delicate, unsealed cardboard " +
+      "model, and I'm already overheating. Optimize my path.";
 
-    // ─── t = 3 s : AI chat panel opens + 50 ms/char typewriter ──
-    // Per spec exactly: 50 ms per character. Submit at t=18 s. The
-    // shorter prompt finishes typing well before t=18 s — the
-    // textarea then holds the typed sentence as a "the AI is reading
-    // what it typed" beat before submission.
+    // ─── t = 3 s : AI chat panel opens (empty composer) ────────
     schedule(3_000, () => {
       setChatMessages([]);
       setChatOpen(true);
+    });
+
+    // ─── t = 6 s : typewriter begins (50 ms/char per spec) ─────
+    // ~245 chars × 50 ms = ~12 s typing → finishes ~t=18 s. Submit
+    // at t=22 leaves a ~4 s "the AI is reading what it typed" beat.
+    schedule(6_000, () => {
       const CHAR_INTERVAL = 50; // ms — explicit spec
-      const TYPE_START = 500; // ms — let the panel slide-in finish
       setDemoTypewriterText('');
       for (let i = 1; i <= DEMO_PROMPT.length; i++) {
         const id = window.setTimeout(() => {
           setDemoTypewriterText(DEMO_PROMPT.slice(0, i));
-        }, TYPE_START + i * CHAR_INTERVAL);
+        }, i * CHAR_INTERVAL);
         demoTimeoutsRef.current.push(id);
       }
     });
 
-    // ─── t = 18 s : auto-submit ─────────────────────────────────
-    // Independent timeout (not nested inside the t=3 s block) so the
-    // submission is anchored to t=18 s exactly per spec, regardless
-    // of how long the typewriter takes. handleSubmitPreference will
-    // geocode origin + destination from the prompt, call setOrigin /
-    // setDestination (which flashes the SearchBar inputs amber via
-    // the originFlashKey / destinationFlashKey counters), and post
-    // the AI reasoning bubble. Filter is forced to avoid-sun by the
-    // t=20 s fallback block below regardless of what Gemini returns.
-    schedule(18_000, () => {
+    // ─── t = 22 s : auto-submit + deterministic field fill ─────
+    // The user spec anchors "fields flash amber and fill" exactly
+    // to t=22. Force-set origin + destination + filter here so the
+    // visual is deterministic — does not depend on Gemini's response
+    // time. handleSubmitPreference runs IN PARALLEL for the AI
+    // reasoning bubble; its later setOrigin/setDestination see
+    // values that match the labels above so they don't trigger a
+    // second visible re-render or flash.
+    schedule(22_000, () => {
+      setOrigin({ point: ORIGIN_POINT, label: ORIGIN_LABEL });
+      setOriginFlashKey((k) => k + 1);
+      setDestination({ point: DESTINATION_POINT, label: DESTINATION_LABEL });
+      setDestinationFlashKey((k) => k + 1);
+      setFilterMode('avoid-sun');
+      setIntensityMultiplier(1.5);
+      console.log('[GMA] Demo t=22: fields filled + avoid-sun applied');
+      // Real Gemini call for the reasoning bubble — landing in chat
+      // sometime in [t≈24, t≈28] which is the t=30 "conversation
+      // visible" beat in the spec.
       void handleSubmitPreference(DEMO_PROMPT);
-      // Release the typewriter override 300 ms after submit so the
-      // chat input goes back to free-form for any user follow-up.
       const releaseId = window.setTimeout(
         () => setDemoTypewriterText(null),
         300,
@@ -1538,47 +1545,13 @@ export default function App() {
       demoTimeoutsRef.current.push(releaseId);
     });
 
-    // ─── t = 20 s : fallback origin/destination ────────────────
-    // If by 2 s after submit the AI hasn't filled the fields yet
-    // (no Gemini key in dev / network error / geocoder REQUEST_DENIED),
-    // force-set them so the rest of the sequence still has a route.
-    // Bumping the flash keys here re-runs the amber-pulse animation
-    // so the viewer sees the fields populate either way.
-    schedule(20_000, () => {
-      setOrigin((current) => {
-        if (current) return current;
-        console.log('[GMA] Demo fallback: setting origin to', ORIGIN_LABEL);
-        setOriginFlashKey((k) => k + 1);
-        return { point: ORIGIN_POINT, label: ORIGIN_LABEL };
-      });
-      setDestination((current) => {
-        if (current) return current;
-        console.log(
-          '[GMA] Demo fallback: setting destination to',
-          DESTINATION_LABEL,
-        );
-        setDestinationFlashKey((k) => k + 1);
-        return { point: DESTINATION_POINT, label: DESTINATION_LABEL };
-      });
-      // Force avoid-sun even if Gemini's reply hasn't landed yet.
-      setFilterMode('avoid-sun');
-      setIntensityMultiplier(1.5);
-    });
-
-    // ─── t = 24 s : close chat — route sheet now shows 3 cards ──
-    // By 6 s after submit the Gemini call + dual forward-geocode +
-    // Routes API fetch have all settled (or the t=20 s fallback
-    // kicked in). The route sheet on the right is rendering every
-    // candidate from `result.routes`, with FASTEST + GMA PICK
-    // labels and the cooler-by-N°F delta on the GMA Pick card.
-    schedule(24_000, () => setChatOpen(false));
-
-    // ─── t = 28 s : show ALL 3 polylines on map at z=16 ────────
-    // showAllRoutes flips on so GMACanvas paints the 2 non-selected
-    // candidates as muted grey lines beneath the colored primary
-    // route. Camera dips slightly closer (z=16) so per-segment
-    // amber-sunny vs blue-shaded coloring reads clearly.
-    schedule(28_000, () => {
+    // ─── t = 35 s : chat closes, map shows full route ──────────
+    // Gives the AI reasoning bubble ~13 s of visible time after
+    // submit before dismissing the panel — the "conversation
+    // visible" hero beat. showAllRoutes flips on so the route sheet
+    // + alternate polylines all read at once.
+    schedule(35_000, () => {
+      setChatOpen(false);
       setShowAllRoutes(true);
       setViewState({
         longitude: FRAME_LNG,
@@ -1591,8 +1564,8 @@ export default function App() {
       } as MapViewState);
     });
 
-    // ─── t = 33 s : animate time slider 8 AM → 2 PM over 4 s ───
-    schedule(33_000, () => {
+    // ─── t = 40 s : time slider animates 8 AM → 2 PM over 4 s ──
+    schedule(40_000, () => {
       const startMs = performance.now();
       const duration = 4_000;
       const fromHour = 8;
@@ -1609,8 +1582,8 @@ export default function App() {
         }
       };
       demoHourRafRef.current = requestAnimationFrame(tick);
-      // Pulse the glare hotspots as the sun climbs past elevation 10°
-      // so the viewer notices them appearing around BoA Tower / etc.
+      // Glare-hotspot pulse synced with the scrub so the dots
+      // visibly appear/intensify as the sun climbs.
       const pulseStart = performance.now();
       const pulseDuration = 800;
       const pulseTick = (now: number) => {
@@ -1624,93 +1597,31 @@ export default function App() {
         }
       };
       glarePulseRafRef.current = requestAnimationFrame(pulseTick);
-      setSelectedRouteIdx(0); // GMA Pick stays primary
     });
 
-    // ─── t = 39 s : zoom into Bryant Park, tree canopy toast ───
-    schedule(39_000, () => {
-      setViewState({
-        longitude: BRYANT_PARK_LNG,
-        latitude: BRYANT_PARK_LAT,
-        zoom: 17,
-        pitch: 35,
-        bearing: 0,
-        transitionDuration: 2_000,
-        transitionInterpolator: new FlyToInterpolator(),
-      } as MapViewState);
-      setToastMessage('🌳 Tree canopy — 75% solar attenuation');
-    });
-
-    // ─── t = 43 s : filter → avoid-wind ────────────────────────
-    schedule(43_000, () => {
+    // ─── t = 46 s : filter → avoid-wind ────────────────────────
+    schedule(46_000, () => {
       setFilterMode('avoid-wind');
       setIntensityMultiplier(1.0);
-      // Pull back so the wind-sheltered alternate is visible.
-      setViewState({
-        longitude: FRAME_LNG,
-        latitude: FRAME_LAT,
-        zoom: 16,
-        pitch: 25,
-        bearing: 0,
-        transitionDuration: 2_000,
-        transitionInterpolator: new FlyToInterpolator(),
-      } as MapViewState);
       console.log('[GMA] Demo: filter → avoid-wind');
     });
 
-    // ─── t = 48 s : filter → sunny-spot ────────────────────────
-    schedule(48_000, () => {
+    // ─── t = 50 s : filter → sunny-spot ────────────────────────
+    schedule(50_000, () => {
       setFilterMode('sunny-spot');
       setIntensityMultiplier(1.0);
       console.log('[GMA] Demo: filter → sunny-spot');
     });
 
-    // ─── t = 52 s : filter → avoid-both ────────────────────────
-    schedule(52_000, () => {
-      setFilterMode('avoid-both');
-      setIntensityMultiplier(1.0);
-      console.log('[GMA] Demo: filter → avoid-both');
-    });
-
-    // ─── t = 56 s : avoid-sun + glare close-up on GMA Pick ─────
-    // Final feature beat: re-applies avoid-sun (intensity high),
-    // zooms in on the GMA Pick polyline at z=18, pulses the glare
-    // hotspots, and posts a BoA-Tower glare toast.
-    schedule(56_000, () => {
+    // ─── t = 54 s : back to avoid-sun + beauty shot pull-out ───
+    // Combined beat per spec: filter swap AND pull camera out to
+    // z=14 so the final composition shows the full corridor, all
+    // glare hotspots, the colored polyline, alternate routes, and
+    // any tree canopy in one wide frame.
+    schedule(54_000, () => {
       setFilterMode('avoid-sun');
       setIntensityMultiplier(1.5);
       setSelectedRouteIdx(0);
-      setShowAllRoutes(false);
-      setViewState({
-        longitude: FRAME_LNG,
-        latitude: FRAME_LAT,
-        zoom: 18,
-        pitch: 45,
-        bearing: 25,
-        transitionDuration: 2_500,
-        transitionInterpolator: new FlyToInterpolator(),
-      } as MapViewState);
-      const pulseStart = performance.now();
-      const pulseDuration = 700;
-      const pulseTick = (now: number) => {
-        const t = Math.min(1, (now - pulseStart) / pulseDuration);
-        setGlarePulsePhase(t);
-        if (t < 1) {
-          glarePulseRafRef.current = requestAnimationFrame(pulseTick);
-        } else {
-          glarePulseRafRef.current = null;
-          window.setTimeout(() => setGlarePulsePhase(0), 50);
-        }
-      };
-      glarePulseRafRef.current = requestAnimationFrame(pulseTick);
-      setToastMessage('🔆 Glass glare detected near Bank of America Tower');
-    });
-
-    // ─── t = 62 s : pull out to z=14 beauty shot ───────────────
-    // Re-enable showAllRoutes so all 3 polylines + glare hotspots +
-    // tree canopy + street overlay + glass-glare dots around the
-    // tower cluster all read at once — the dense final composition.
-    schedule(62_000, () => {
       setShowAllRoutes(true);
       setViewState({
         longitude: FRAME_LNG,
@@ -1723,16 +1634,12 @@ export default function App() {
       } as MapViewState);
     });
 
-    // ─── t = 68 s : silent end ─────────────────────────────────
-    schedule(68_000, () => {
+    // ─── t = 60 s : silent end ─────────────────────────────────
+    schedule(60_000, () => {
       setShowAllRoutes(false);
       setDemoRunning(false);
       demoTimeoutsRef.current = [];
     });
-    // Note: route selection at t=25/29 reads `resultRef.current` (live)
-    // not the closure `result`, so this callback doesn't need `result`
-    // in its deps. Navigation simulation was removed, so `selectedRoute`
-    // is no longer referenced either.
   }, [handleSubmitPreference, setTheme]);
 
   // ---- live navigation derivations -----------------------------------

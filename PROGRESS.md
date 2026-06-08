@@ -4632,3 +4632,137 @@ So any manual or programmatic selection of route 2+ auto-opens the collapsed exp
 ### Build status
 - `npx tsc -b` clean
 - `npx vite build` clean (existing >500 kB chunk advisory only)
+
+---
+
+## 2026-06-08 — Demo recut: Flatiron → Union Square (67 s, route-click beats restored)
+
+New corridor + new scenario prompt per spec, with route-selection beats at t=25/t=29 restored (visibility fixes from the previous turn — auto-scroll on selected RouteCard + auto-expand More Options + active-filter-pill scroll-into-view — keep the selected option in view through the demo).
+
+### 1. New demo route ([src/App.tsx](src/App.tsx) `runDemoSequence`)
+
+| Field | Value |
+|---|---|
+| Origin | `The Flatiron Building` @ (40.7411, −73.9897) |
+| Destination | `Union Square Park` @ (40.7359, −73.9911) |
+| Camera framing | lng −73.9904, lat 40.7385 (midpoint, slight southward bias so Union Square sits near visual center) |
+| Distance | ~0.4 mi southbound along Broadway through the Flatiron District |
+
+### 2. New scenario prompt
+
+```
+I'm walking home from my tech office with a pounding headache and
+minor heat exhaustion. I need a low-stimulation, maximum-shade route
+down to the Union Square subway loop. Avoid direct sun blurs.
+```
+
+~210 chars → 10.5 s at 50 ms/char. Body-context only — endpoints come from the fallback at t=15 s so the demo showcases avoid-sun extraction from heat-exhaustion cues even when Gemini can't extract origin/destination from the wording.
+
+### 3. New 67 s timeline
+
+| t (s) | Event |
+|---|---|
+| 0 | Empty fields, framed on the Flatiron→Union Square corridor (z=15, pitch 30). Time locked to 2 PM. Filter = no-preference. |
+| 1.6 | Intro card fades. |
+| 3 | AI chat opens. Typewriter starts at 50 ms/char on the scenario prompt. |
+| ~13.5 | Typewriter completes (~210 chars × 50 ms + 500 ms lead-in). |
+| 14 | **Auto-submit** — `handleSubmitPreference(DEMO_PROMPT)` fires. Gemini extracts avoid_sun + high intensity from the heat-exhaustion cues; posts the reasoning bubble. |
+| 15 | **Fields fill + flash amber** — fallback sets origin to "The Flatiron Building" and destination to "Union Square Park" (functional setState so an AI-extracted value wouldn't be overwritten). Routes load. Filter forced to avoid-sun (intensity 1.5). |
+| 20 | Chat closes. `showAllRoutes` flips on → all 3 polylines visible (2 muted greys under colored primary). Camera dips to z=16, pitch 25. |
+| 25 | **`setSelectedRouteIdx(1)`** — viewer sees the selection swap on map + sidebar (RouteCard's `scrollIntoView` keeps the chosen card visible). |
+| 29 | **`setSelectedRouteIdx(2)`** (or 1 fallback if only 2 routes returned) — auto-expands More Options if route 3 lives there. |
+| 33 | Time slider animates 8 AM → 2 PM over 4 s via rAF. Glare hotspots pulse for 800 ms as the sun climbs past elevation 10°. Snap back to idx 0 so the glare-on-route effect lands on GMA Pick. |
+| 39 | Filter → `avoid-wind`. FilterPill's `scrollIntoView` centers the active pill in the horizontal row. |
+| 44 | Filter → `sunny-spot`. |
+| 49 | Filter → `avoid-both`. |
+| 54 | Filter → `avoid-sun` (intensity 1.5). `showAllRoutes` off, camera zooms to z=18, pitch 45, bearing 25 for glare close-up. 700 ms hotspot pulse + toast: *"🔆 Glass glare — +15°F"*. |
+| 60 | `showAllRoutes` re-enabled. Pull out to **z=14** beauty shot — full corridor, all glare hotspots, tree canopy, 3 polylines, street overlay. |
+| 67 | Silent end. `showAllRoutes` flips off. Start Demo reappears. |
+
+### 4. Glass towers added for the new corridor ([src/lib/glassGlare.ts](src/lib/glassGlare.ts))
+
+The Flatiron itself is limestone (not glass) so we don't add it — but its glass-clad neighbors along Broadway between 14th and 23rd Streets do drive the demo's glare narrative:
+
+```ts
+'one madison',
+'one madison park',
+'50 madison',
+'277 fifth avenue',
+'277 fifth',
+'15 union square west',
+'15 union square',
+'zeckendorf towers',
+'1 union square south',
+'4 union square south',
+'11 madison',
+'11 madison avenue',
+```
+
+### 5. Visibility fixes from the prior turn still apply
+
+- `RouteCard` auto-scrolls into view on selection.
+- `FilterPill` (the extracted filter button) auto-scrolls to `inline: 'center'` when active.
+- More Options auto-expands when `selectedRouteIdx` points to a route hidden inside it.
+
+So the t=25 / t=29 route-click beats and t=39 / t=44 / t=49 / t=54 filter cycle remain visually clear throughout the demo.
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (existing >500 kB chunk advisory only)
+
+---
+
+## 2026-06-08 — Promo cut: 60 s hero, deterministic field fill, taller chat panel
+
+Final-cut promo demo. Hero moment is t=6 → t=30: a long detailed prompt types out, auto-submits, fields fill with amber flash, routes appear, AI reasoning bubble lands — all in one continuous beat with the chat panel staying open until t=35.
+
+### 1. New 60 s timeline ([src/App.tsx](src/App.tsx) `runDemoSequence`)
+
+Route: **1251 Avenue of the Americas → Chrysler Building** (Midtown diagonal, camera at lng −73.979 / lat 40.7555, z=15).
+
+| t (s) | Event |
+|---|---|
+| 0 | Empty fields, framed on Midtown corridor (z=15, pitch 30). 2 PM solar lock. Filter = no-preference. |
+| 1.6 | Intro card fades. |
+| 3 | AI chat panel opens (empty composer). |
+| 6 | Typewriter begins on the long contextual prompt at **50 ms/char**: *"I'm running late to an executive presentation in a heavy wool suit. I need to walk from 1251 Avenue of the Americas to the Chrysler Building. I'm carrying a delicate, unsealed cardboard model, and I'm already overheating. Optimize my path."* |
+| ~18 | Typewriter completes (~245 chars × 50 ms). Typed prompt sits in textarea — "AI reading what it typed" beat. |
+| **22** | **Hero anchor — auto-submit + deterministic field fill.** `setOrigin({ point, label: '1251 Avenue of the Americas, New York' })` + `setOriginFlashKey++` + `setDestination(…)` + `setFilterMode('avoid-sun')` + `setIntensityMultiplier(1.5)` ALL fire synchronously, then `handleSubmitPreference(DEMO_PROMPT)` runs in parallel for the real AI reasoning bubble. Visual is anchored exactly to t=22 regardless of Gemini latency. |
+| ~24 | Routes load (the existing `[origin, destination, travelMode]` effect picks up the new pair); RouteCard breakdowns surface. |
+| ~26-30 | Gemini reasoning bubble lands in chat history. User amber bubble (right) + AI dark bubble (left) both visible at the t=30 spec beat. |
+| 35 | Chat closes. `showAllRoutes` flips on. Camera dips to z=16, pitch 25 to show the whole corridor + alternate polylines. |
+| 40-44 | Time slider animates 8 AM → 2 PM over 4 s via rAF. Glare hotspots pulse for 800 ms as the sun climbs. |
+| 46 | Filter → `avoid-wind`. |
+| 50 | Filter → `sunny-spot`. |
+| 54 | Filter → `avoid-sun` + camera pulls out to **z=14** beauty shot — full corridor, all glare hotspots, tree canopy, 3 polylines, street overlay in one wide frame. |
+| 60 | Silent end. `showAllRoutes` flips off. Start Demo reappears. |
+
+### 2. Why the field fill is deterministic (not gated on Gemini)
+
+Previous versions called `handleSubmitPreference` and waited on its async geocode + setOrigin pipeline to land before the fields appeared. That coupled the demo's visual cadence to network latency — Gemini delays meant the t=22 "fields flash" beat could slip to t=24+ and miss its mark on the recording.
+
+The new design force-sets origin + destination + filter SYNCHRONOUSLY inside the t=22 scheduled callback, then fires `handleSubmitPreference` IN PARALLEL purely for the AI reasoning bubble. The hardcoded labels (`'1251 Avenue of the Americas, New York'` / `'Chrysler Building, New York'`) match exactly what Gemini's extractor returns (it appends `", New York"` for NYC landmarks per the system prompt), so `handleSubmitPreference`'s downstream `setOrigin` call sees identical values via React's `Object.is` equality and doesn't trigger a second visible flash.
+
+### 3. Chat stays open through t=35
+
+Previous chat-close was at t=20 — too early for the AI reasoning bubble (which arrives ~t=24-26) to be visible long enough for screenshots / the "conversation visible" beat the spec calls for. Moved to t=35 so the user amber bubble and Gemini's dark response bubble both have ~10 s of overlap visibility.
+
+### 4. AIChatPanel height bumped 480 → 620 px ([src/components/AIChatPanel.tsx](src/components/AIChatPanel.tsx))
+
+```diff
+- height: 'min(480px, calc(100vh - 32px))',
++ height: 'min(620px, calc(100vh - 32px))',
+```
+
+The taller panel ensures the user's typed prompt (long, wraps to several lines) AND the AI's multi-sentence reasoning reply both fit in the history area at the same time — required for a clean screenshot during the t=22 → t=35 hero window. Still clamped to viewport so short screens see the composer.
+
+### 5. Removed beats
+
+- Route-click switches at t=25 / t=29 (the hero spec doesn't include them).
+- `avoid-both` from the filter cycle (spec says only wind → sunny → sun).
+- t=54 glare close-up + toast (spec rolls the avoid-sun switch into the beauty-shot pull-out).
+- Bryant Park tree canopy toast (spec doesn't mention it for this corridor).
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (existing >500 kB chunk advisory only)
