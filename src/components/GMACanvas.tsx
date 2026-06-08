@@ -78,16 +78,23 @@ const HEADING_CHEVRON_SVG =
   '<path d="M16 4 L26 28 L16 22 L6 28 Z" fill="rgba(66,133,244,0.92)" stroke="white" stroke-width="2" stroke-linejoin="round"/>' +
   '</svg>';
 
+// Origin = Google-Maps-style "you are here" puck: translucent blue
+// halo ring + solid bright-blue dot with a white stroke. The double
+// circle reads as a pulse-style marker without requiring per-frame
+// animation against deck.gl's static-icon raster cache.
 const ORIGIN_PIN_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40">' +
-  '<path d="M16 2 C8 2 2 8 2 16 C2 24 16 38 16 38 C16 38 30 24 30 16 C30 8 24 2 16 2 Z" fill="rgb(16,185,129)" stroke="white" stroke-width="2"/>' +
-  '<circle cx="16" cy="16" r="5" fill="white"/>' +
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
+  '<circle cx="20" cy="20" r="18" fill="rgba(66,133,244,0.20)"/>' +
+  '<circle cx="20" cy="20" r="13" fill="rgba(66,133,244,0.35)"/>' +
+  '<circle cx="20" cy="20" r="8" fill="rgb(66,133,244)" stroke="white" stroke-width="3"/>' +
   '</svg>';
 
+// Destination = a real red teardrop map-pin. White outline,
+// solid red fill, white "eye" in the bulb.
 const DEST_PIN_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40">' +
-  '<path d="M16 2 C8 2 2 8 2 16 C2 24 16 38 16 38 C16 38 30 24 30 16 C30 8 24 2 16 2 Z" fill="rgb(220,38,38)" stroke="white" stroke-width="2"/>' +
-  '<circle cx="16" cy="16" r="5" fill="white"/>' +
+  '<path d="M16 1 C9 1 3 6.6 3 13.5 C3 22 16 39 16 39 C16 39 29 22 29 13.5 C29 6.6 23 1 16 1 Z" fill="rgb(220,38,38)" stroke="white" stroke-width="2"/>' +
+  '<circle cx="16" cy="13.5" r="4.5" fill="white"/>' +
   '</svg>';
 
 // Sunny-spot star — used by the "Sunny Spot 🌞" filter to mark
@@ -114,10 +121,10 @@ const HEADING_CHEVRON_ICON = {
 
 const ORIGIN_PIN_ICON = {
   url: ORIGIN_PIN_URL,
-  width: 32,
+  width: 40,
   height: 40,
-  anchorX: 16,
-  anchorY: 38, // anchor at the point of the pin
+  anchorX: 20,
+  anchorY: 20, // centered — the marker is symmetric, no pin tip
   mask: false,
 };
 
@@ -126,7 +133,7 @@ const DEST_PIN_ICON = {
   width: 32,
   height: 40,
   anchorX: 16,
-  anchorY: 38,
+  anchorY: 38, // anchor at the point of the teardrop pin
   mask: false,
 };
 
@@ -453,7 +460,7 @@ export function GMACanvas({
           data: [originPoint],
           getPosition: (d) => [d.lng, d.lat],
           getIcon: () => ORIGIN_PIN_ICON,
-          getSize: 40,
+          getSize: 48,
           sizeUnits: 'pixels',
           pickable: false,
           parameters: { depthCompare: 'always', depthWriteEnabled: false },

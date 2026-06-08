@@ -12,6 +12,7 @@ import {
   RouteSheet,
   FILTER_PRESETS,
   type FilterMode,
+  type SegmentBreakdown,
 } from './components/RouteSheet';
 import { NavigationHeader } from './components/NavigationHeader';
 import { NextTurnIndicator } from './components/NextTurnIndicator';
@@ -138,19 +139,32 @@ export default function App() {
 
   // Demo Mode — activated by `?demo=true` in the URL. Renders a
   // floating START DEMO CTA + a top-left watermark. Tapping the CTA
-  // kicks off the 45 s scripted sequence (`runDemoSequence` below).
+  // kicks off the 60 s scripted sequence (`runDemoSequence` below).
   const isDemoMode = useDemoMode();
   const [demoRunning, setDemoRunning] = useState(false);
   const demoTimeoutsRef = useRef<number[]>([]);
+  // demoLiveCoord shadows the real GPS during the demo's navigation
+  // simulation segment (t=52s onward). When set, it replaces the live
+  // location reading for the chevron + follow-cam so the camera
+  // sweeps along the route as if the user were walking it. rAF
+  // handle stored separately for clean cancellation.
+  const [demoLiveCoord, setDemoLiveCoord] =
+    useState<{ lat: number; lng: number } | null>(null);
+  const demoNavRafRef = useRef<number | null>(null);
 
-  // Clear any pending scheduled steps on unmount so a navigation
-  // away mid-demo doesn't fire setters against a dead component.
+  // Clear any pending scheduled steps + the nav-sim rAF on unmount so
+  // a navigation away mid-demo doesn't fire setters against a dead
+  // component.
   useEffect(
     () => () => {
       for (const id of demoTimeoutsRef.current) {
         window.clearTimeout(id);
       }
       demoTimeoutsRef.current = [];
+      if (demoNavRafRef.current != null) {
+        cancelAnimationFrame(demoNavRafRef.current);
+        demoNavRafRef.current = null;
+      }
     },
     [],
   );
@@ -201,7 +215,12 @@ export default function App() {
   // chevron glides rather than teleporting between fixes. The route
   // progress + nextTurn computations still read the RAW coord
   // (`liveLocation.coord`) — that's the source-of-truth GPS reading.
-  const animatedCoord = useAnimatedLocation(liveLocation.coord, 1000);
+  // Effective coord = demoLiveCoord during the demo's nav-simulation
+  // segment, real GPS otherwise. The downstream useAnimatedLocation
+  // smooths whichever source we plug in, so the demo simulation
+  // benefits from the same 1 s gliding interpolation as real GPS.
+  const effectiveLiveCoord = demoLiveCoord ?? liveLocation.coord;
+  const animatedCoord = useAnimatedLocation(effectiveLiveCoord, 1000);
 
   // Heading fallback. The geolocation API often returns
   // `position.coords.heading === null` (most desktop browsers, slow
@@ -215,12 +234,9 @@ export default function App() {
       lastHeadingRef.current = liveLocation.heading;
       return liveLocation.heading;
     }
-    if (liveLocation.coord && prevCoordRef.current) {
+    if (effectiveLiveCoord && prevCoordRef.current) {
       const prev = prevCoordRef.current;
-      const cur = liveLocation.coord;
-      // Ignore noise: only update bearing when the new fix is at
-      // least ~0.5 m away from the previous one. Keeps the chevron
-      // from spinning while the user is stationary.
+      const cur = effectiveLiveCoord;
       const dLat = cur.lat - prev.lat;
       const dLng = cur.lng - prev.lng;
       if (dLat * dLat + dLng * dLng > 2e-11) {
@@ -230,16 +246,13 @@ export default function App() {
       }
     }
     return lastHeadingRef.current ?? 0;
-  }, [liveLocation.coord?.lat, liveLocation.coord?.lng, liveLocation.heading]);
+  }, [effectiveLiveCoord, liveLocation.heading]);
 
-  // Track raw GPS for the bearing fallback. Updated in a useEffect (not
-  // inside the useMemo) so the previous coord reflects the value used
-  // for the *prior* bearing computation, not the current one.
   useEffect(() => {
-    if (liveLocation.coord) {
-      prevCoordRef.current = liveLocation.coord;
+    if (effectiveLiveCoord) {
+      prevCoordRef.current = effectiveLiveCoord;
     }
-  }, [liveLocation.coord?.lat, liveLocation.coord?.lng]);
+  }, [effectiveLiveCoord]);
 
   // Follow-cam control. `followCamActive` toggles whether each new GPS
   // fix snaps the camera back to the user. User pan/zoom flips it
@@ -1138,55 +1151,75 @@ export default function App() {
       window.clearTimeout(id);
     }
     demoTimeoutsRef.current = [];
+    if (demoNavRafRef.current != null) {
+      cancelAnimationFrame(demoNavRafRef.current);
+      demoNavRafRef.current = null;
+    }
+    setDemoLiveCoord(null);
     const schedule = (delayMs: number, fn: () => void) => {
       const id = window.setTimeout(fn, delayMs);
       demoTimeoutsRef.current.push(id);
     };
 
-    // Helpful landmark coords for the script.
     const TIMES_SQUARE = { lat: 40.758, lng: -73.9855 };
     const GRAND_CENTRAL = { lat: 40.7527, lng: -73.9772 };
     const MID_LAT = (TIMES_SQUARE.lat + GRAND_CENTRAL.lat) / 2;
     const MID_LNG = (TIMES_SQUARE.lng + GRAND_CENTRAL.lng) / 2;
 
-    // t = 0 s : Times Square → Grand Central, 2D zoom 14 flat
+    // ─── t = 0s ───────────────────────────────────────────────
+    // Times Square → Grand Central, 2D mode, route shows immediately
+    // via the auto-fetch effect. Camera at zoom 15 so the colored
+    // segments read at-a-glance.
     setOrigin({ point: TIMES_SQUARE, label: 'Times Square' });
     setDestination({
       point: GRAND_CENTRAL,
       label: 'Grand Central Terminal',
     });
     setMapView('2d');
+    setTheme('light');
+    setTimeMode('leave-now');
+    setPlannedTime(null);
+    setFilterMode('no-preference');
     setViewState({
       longitude: MID_LNG,
       latitude: MID_LAT,
-      zoom: 14,
+      zoom: 15,
       pitch: 0,
       bearing: 0,
       transitionDuration: 1500,
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
 
-    // t = 5 s : Avoid Sun filter
-    schedule(5_000, () => setFilterMode('avoid-sun'));
-
-    // t = 8 s : Cinematic 3D fly-over of the route
-    schedule(8_000, () => {
+    // ─── t = 5s ───────────────────────────────────────────────
+    // Zoom IN to street level so the orange/blue segment colors
+    // become unmistakable.
+    schedule(5_000, () => {
       setViewState({
         longitude: MID_LNG,
         latitude: MID_LAT,
         zoom: 17,
-        pitch: 55,
-        bearing: 20,
+        pitch: 0,
+        bearing: 0,
         transitionDuration: 2500,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
     });
 
-    // t = 13 s : Dark mode
-    schedule(13_000, () => setTheme('dark'));
+    // ─── t = 10s ──────────────────────────────────────────────
+    // Glare segment annotation. Toast surfaces the "+15°F" claim.
+    schedule(10_000, () => {
+      setToastMessage('🔆 Glass glare — +15°F felt temperature');
+    });
 
-    // t = 16 s : Planned time = tomorrow 2 PM (glare hotspots show)
-    schedule(16_000, () => {
+    // ─── t = 15s ──────────────────────────────────────────────
+    // Activate Avoid Sun so the GMA Pick card with the comfort
+    // delta shows up alongside the Fastest card.
+    schedule(15_000, () => setFilterMode('avoid-sun'));
+
+    // ─── t = 20s ──────────────────────────────────────────────
+    // Move planned time to tomorrow 2 PM — the Solar API + sun
+    // azimuth recompute lit-glare hotspots over Midtown towers.
+    schedule(20_000, () => {
       const tomorrow2pm = new Date();
       tomorrow2pm.setDate(tomorrow2pm.getDate() + 1);
       tomorrow2pm.setHours(14, 0, 0, 0);
@@ -1194,37 +1227,93 @@ export default function App() {
       setPlannedTime(tomorrow2pm);
     });
 
-    // t = 21 s : Avoid Wind filter
-    schedule(21_000, () => setFilterMode('avoid-wind'));
-
-    // t = 26 s : Back to light + 2D
-    schedule(26_000, () => {
-      setTheme('light');
-      setMapView('2d');
+    // ─── t = 25s ──────────────────────────────────────────────
+    // Flip to 3D Photorealistic Tiles with a pitched bearing
+    // sweep. Building geometry + glare hotspots in one shot.
+    schedule(25_000, () => {
+      setMapView('3d');
+      setViewState({
+        longitude: MID_LNG,
+        latitude: MID_LAT,
+        zoom: 17,
+        pitch: 60,
+        bearing: 25,
+        transitionDuration: 3000,
+        transitionInterpolator: new FlyToInterpolator(),
+      } as MapViewState);
     });
 
-    // t = 30 s : Type "I am walking in a suit" through Gemini
-    schedule(30_000, () => {
+    // ─── t = 30s ──────────────────────────────────────────────
+    // Dark mode — glare hotspots get their red glow shadow.
+    schedule(30_000, () => setTheme('dark'));
+
+    // ─── t = 35s ──────────────────────────────────────────────
+    // Avoid Wind — route polyline recolors emerald/violet.
+    schedule(35_000, () => setFilterMode('avoid-wind'));
+
+    // ─── t = 40s ──────────────────────────────────────────────
+    // Sunny Spot — yellow stars layered onto the sunny segments,
+    // light mode back so the stars read against a bright base.
+    schedule(40_000, () => {
+      setTheme('light');
+      setMapView('2d');
+      setFilterMode('sunny-spot');
+    });
+
+    // ─── t = 45s ──────────────────────────────────────────────
+    // Conversational input → Gemini routing intent → filter swap
+    // plus toast confirmation.
+    schedule(45_000, () => {
       void handleSubmitPreference('I am walking in a suit');
     });
 
-    // t = 35 s : Sunny Spot filter
-    schedule(35_000, () => setFilterMode('sunny-spot'));
-
-    // t = 40 s : Reset Leave now + No preference
-    schedule(40_000, () => {
-      setTimeMode('leave-now');
-      setPlannedTime(null);
-      setFilterMode('no-preference');
+    // ─── t = 52s ──────────────────────────────────────────────
+    // Start the simulated navigation. Mock GPS walks the route
+    // polyline over 7 s; the chevron + follow-cam respect it via
+    // demoLiveCoord. Brief camera reset to follow-cam zoom 17.
+    schedule(52_000, () => {
+      if (!selectedRoute) return;
+      const polyline = selectedRoute.polyline;
+      if (polyline.length < 2) return;
+      setNavigating(true);
+      const startMs = performance.now();
+      const durationMs = 7_000;
+      const tick = (now: number) => {
+        const elapsed = now - startMs;
+        const t = Math.min(1, elapsed / durationMs);
+        const idxFloat = t * (polyline.length - 1);
+        const i0 = Math.floor(idxFloat);
+        const i1 = Math.min(polyline.length - 1, i0 + 1);
+        const frac = idxFloat - i0;
+        const a = polyline[i0]!;
+        const b = polyline[i1]!;
+        setDemoLiveCoord({
+          lat: a.lat + (b.lat - a.lat) * frac,
+          lng: a.lng + (b.lng - a.lng) * frac,
+        });
+        if (t < 1) {
+          demoNavRafRef.current = requestAnimationFrame(tick);
+        } else {
+          demoNavRafRef.current = null;
+        }
+      };
+      demoNavRafRef.current = requestAnimationFrame(tick);
     });
 
-    // t = 45 s : Done
-    schedule(45_000, () => {
-      setToastMessage('Demo complete');
+    // ─── t = 60s ──────────────────────────────────────────────
+    // Done. Clear the sim, exit navigation, surface the toast.
+    schedule(60_000, () => {
+      if (demoNavRafRef.current != null) {
+        cancelAnimationFrame(demoNavRafRef.current);
+        demoNavRafRef.current = null;
+      }
+      setDemoLiveCoord(null);
+      setNavigating(false);
+      setToastMessage('Demo complete · Tap “Start Demo” to replay');
       setDemoRunning(false);
       demoTimeoutsRef.current = [];
     });
-  }, [handleSubmitPreference, setTheme]);
+  }, [handleSubmitPreference, setTheme, selectedRoute]);
 
   // ---- live navigation derivations -----------------------------------
   // routeProgress / nextTurn / remaining-time recompute on every new
@@ -1274,6 +1363,31 @@ export default function App() {
         : 0;
     return coloredSegments[idx]?.color ?? null;
   }, [navigating, coloredSegments, routeProgress?.nearestVertexIdx]);
+
+  // Shaded / sunny / glass-glare bucketed breakdown for the SELECTED
+  // route — fed into RouteCard as a slim color bar. Counts every
+  // segment classified by routeColoring's priority chain:
+  //   shaded  = building-shadow + tree-canopy + low-sun-angle
+  //   sunny   = direct sun
+  //   glare   = glass-glare specular hits
+  const selectedRouteBreakdown = useMemo<SegmentBreakdown | null>(() => {
+    if (!coloredSegments || coloredSegments.length === 0) return null;
+    let shaded = 0;
+    let sunny = 0;
+    let glare = 0;
+    for (const seg of coloredSegments) {
+      if (seg.reason === 'sunny') sunny++;
+      else if (seg.reason === 'glare') glare++;
+      else shaded++; // building-shadow / tree-canopy / low-sun-angle
+    }
+    const total = shaded + sunny + glare;
+    if (total === 0) return null;
+    return {
+      shadedPct: (100 * shaded) / total,
+      sunnyPct: (100 * sunny) / total,
+      glarePct: (100 * glare) / total,
+    };
+  }, [coloredSegments]);
 
   // ---- Sunny Spot markers (Patio Gold Rush use case) -----------------
   // Yellow star pins at sunlit patches along the route — what the user
@@ -1550,6 +1664,7 @@ export default function App() {
               : undefined
           }
           legendSnow={weather?.precipitationType === 'snow'}
+          selectedRouteBreakdown={selectedRouteBreakdown}
         />
       )}
       {!useSidebar && (
@@ -1693,6 +1808,7 @@ export default function App() {
                 : undefined
             }
             legendSnow={weather?.precipitationType === 'snow'}
+            selectedRouteBreakdown={selectedRouteBreakdown}
           />
         )}
         <StartButton

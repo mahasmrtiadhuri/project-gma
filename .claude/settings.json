@@ -7,7 +7,8 @@
       "Bash(grep -c \"vite build\\\\` clean \\(~1.42 MB main chunk, ~12 s\\)\" PROGRESS.md)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(grep -n \"filterMode={filterMode}$\" src/components/RouteSheet.tsx)"
     ]
   }
 }

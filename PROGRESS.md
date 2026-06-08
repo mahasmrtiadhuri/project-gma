@@ -3707,3 +3707,67 @@ App.tsx's `useTheme` destructure now pulls `setTheme` too (previously only `togg
 
 - `tsc -b` clean
 - `vite build` clean (~1.46 MB main chunk, ~14 s)
+
+---
+
+## 2026-06-07 — Demo polish: pulse-style origin, teardrop destination, 60 s sequence + nav sim, route breakdown bar, filter emojis
+
+Pass that turns the recorded demo into a story rather than a slideshow.
+
+### Marker upgrades
+
+- **Origin pin** ([src/components/GMACanvas.tsx](src/components/GMACanvas.tsx)) — replaced the green map-pin with a layered "you are here" puck: two translucent blue halo rings + a solid Google-Maps-blue dot with a white stroke. Visually pulse-like without per-frame animation (deck.gl rasterizes the icon once; a real SMIL pulse would need an HTML overlay + projection math, deferred). 40×40 viewBox, anchored center so the marker sits over the geo coord; getSize bumped 40 → 48 px.
+- **Destination pin** — replaced the circular red marker with a proper teardrop map-pin. 32×40 viewBox, anchored at the point (anchorY: 38) so the geo coord sits exactly under the pin tip.
+
+### Filter pill emojis
+
+[src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) — `FILTER_META.label` now carries an emoji prefix on each pill:
+
+- ☀️ Avoid Sun
+- 🌬️ Avoid Wind
+- 🌳 Avoid Both
+- 💧 Avoid Rain
+- 🌞 Sunniest
+- ⭐ Sunny Spot
+- No preference (intentionally bare — emoji'd labels imply opinion, "No preference" needs to read neutral).
+
+### Route card improvements
+
+- **Subtle gradient background** — every `RouteCard` now uses a vertical `linear-gradient` (top 90 % surface + 10 % accent → bottom 100 % surface for GMA/combined cards; near-surface → surface for plain cards). Soft depth without dominating.
+- **Segment breakdown bar** — new `SegmentBreakdownBar` subcomponent in RouteSheet.tsx renders a slim 1.5 px three-color bar (blue shaded / amber sunny / red glare) at the bottom of the SELECTED route card, with a percentage label underneath (e.g. `60 % shaded · 30 % sunny · 10 % glass glare`). Only the selected card knows its colored segments at the App level — the bar is gated on `selected && breakdown`.
+- **App.tsx `selectedRouteBreakdown` memo** — computes percentages from `coloredSegments` reasons: `shaded = building-shadow + tree-canopy + low-sun-angle`, `sunny = sunny`, `glare = glare`. Plumbed through `RouteSheetProps.selectedRouteBreakdown` and `MoreOptionsSectionProps.selectedRouteBreakdown` into every `<RouteCard breakdown={...}>` call site. Rounding remainder absorbed into the biggest bucket so the displayed percentages always sum to 100.
+- **SegmentBreakdown type** exported from RouteSheet so App.tsx can import it without redefining the shape.
+
+### Demo sequence — rewritten to 60 s
+
+New script in App.tsx `runDemoSequence`. Same setTimeout-based scheduling + `demoTimeoutsRef` cleanup pattern; sequence now hits every flagship feature in narrative order:
+
+| t (s) | Step |
+|---|---|
+| 0 | Reset (light + 2D + leave-now + no-preference) → Times Square → Grand Central → fly to mid-route zoom 15 pitch 0 (1.5 s) |
+| 5 | Zoom IN to z 17 (2.5 s) — orange/blue segment colors readable |
+| 10 | Toast: `🔆 Glass glare — +15°F felt temperature` (segment annotation via toast) |
+| 15 | Avoid Sun filter → GMA Pick card with `~X°F cooler` badge |
+| 20 | Planned time → tomorrow 2 PM → glass-glare hotspots appear over Midtown |
+| 25 | 3D Photorealistic Tiles + cinematic sweep (pitch 60, bearing 25, 3 s) |
+| 30 | Dark mode — glare hotspots get red glow |
+| 35 | Avoid Wind — route recolors emerald/violet |
+| 40 | Light + 2D + Sunny Spot — yellow stars layered on sunny segments |
+| 45 | Submit `I am walking in a suit` → Gemini → filter swap + toast |
+| 52 | **Navigation simulation** — `setNavigating(true)` + rAF loop advances `demoLiveCoord` along `selectedRoute.polyline` over 7 s, chevron + follow-cam respect it |
+| 60 | Cancel rAF + clear `demoLiveCoord` + `setNavigating(false)` + toast `Demo complete · Tap "Start Demo" to replay` |
+
+### Navigation simulation infrastructure
+
+- New `demoLiveCoord` state in App.tsx; `demoNavRafRef` for the rAF handle.
+- New `effectiveLiveCoord = demoLiveCoord ?? liveLocation.coord` — the value passed into `useAnimatedLocation` (chevron position) and used by the heading fallback memo. So during the demo's t=52→59 s window the chevron walks along the route with the same 1 s glide smoothing that real GPS gets.
+- Cleanup: the existing demo-unmount effect now also cancels `demoNavRafRef` so a route change mid-sim doesn't leave a runaway rAF.
+
+### Files touched
+
+- Updated: [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) (marker SVGs + icon dims), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) (emoji labels, gradient bg, SegmentBreakdownBar, prop plumbing), [src/App.tsx](src/App.tsx) (selectedRouteBreakdown memo + plumbing, runDemoSequence rewrite, demoLiveCoord wiring).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.47 MB main chunk, CSS ~30.7 KB / gzip 6.9 KB, ~11 s)

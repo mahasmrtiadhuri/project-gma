@@ -77,13 +77,17 @@ const FILTER_META: Record<
   FilterMode,
   { label: string; verb: string; accent: 'sun' | 'wind' | 'rain' | 'neutral' }
 > = {
-  'avoid-sun': { label: 'Avoid Sun', verb: 'cooler', accent: 'sun' },
-  'avoid-wind': { label: 'Avoid Wind', verb: 'calmer', accent: 'wind' },
-  'avoid-both': { label: 'Avoid Both', verb: 'gentler', accent: 'sun' },
-  'avoid-rain': { label: 'Avoid Rain', verb: 'drier', accent: 'rain' },
-  sunniest: { label: 'Sunniest', verb: 'sunnier', accent: 'sun' },
-  'sunny-spot': { label: 'Sunny Spot 🌞', verb: 'warmer', accent: 'sun' },
-  'no-preference': { label: 'No preference', verb: 'comfort', accent: 'neutral' },
+  'avoid-sun': { label: '☀️ Avoid Sun', verb: 'cooler', accent: 'sun' },
+  'avoid-wind': { label: '🌬️ Avoid Wind', verb: 'calmer', accent: 'wind' },
+  'avoid-both': { label: '🌳 Avoid Both', verb: 'gentler', accent: 'sun' },
+  'avoid-rain': { label: '💧 Avoid Rain', verb: 'drier', accent: 'rain' },
+  sunniest: { label: '🌞 Sunniest', verb: 'sunnier', accent: 'sun' },
+  'sunny-spot': { label: '⭐ Sunny Spot', verb: 'warmer', accent: 'sun' },
+  'no-preference': {
+    label: 'No preference',
+    verb: 'comfort',
+    accent: 'neutral',
+  },
 };
 
 // Probability threshold for showing the Avoid Rain pill at all.
@@ -237,6 +241,12 @@ export interface RouteSheetProps {
    * bottom edge instead of overlapping the scroll area).
    */
   embedded?: boolean;
+  /**
+   * Shaded/sunny/glare breakdown of the SELECTED route only — only
+   * the chosen route has its colored segments computed at the App
+   * level, so the bar shows only on the selected card.
+   */
+  selectedRouteBreakdown?: SegmentBreakdown | null;
 }
 
 /**
@@ -262,6 +272,7 @@ export function RouteSheet({
   legendMode,
   legendSnow = false,
   embedded = false,
+  selectedRouteBreakdown = null,
 }: RouteSheetProps) {
   const dayAccent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   const sunDirection = filterToSunDirection(filterMode);
@@ -544,6 +555,7 @@ export function RouteSheet({
                       onClick={() => onSelectRoute(comfortIdx)}
                       dayAccent={dayAccent}
                       filterMode={filterMode}
+                      breakdown={selectedRouteBreakdown}
                     />
                     <p
                       className="px-2 py-1 text-center text-xs"
@@ -566,6 +578,7 @@ export function RouteSheet({
                         conditionFor={conditionFor}
                         dayAccent={dayAccent}
                         filterMode={filterMode}
+                        selectedRouteBreakdown={selectedRouteBreakdown}
                       />
                     )}
                   </div>
@@ -584,6 +597,7 @@ export function RouteSheet({
                     onClick={() => onSelectRoute(fastestIdx)}
                     dayAccent={dayAccent}
                     filterMode={filterMode}
+                    breakdown={selectedRouteBreakdown}
                   />
                   <ComparisonLine
                     timeDeltaMin={timeDeltaMin}
@@ -599,6 +613,7 @@ export function RouteSheet({
                     onClick={() => onSelectRoute(comfortIdx)}
                     dayAccent={dayAccent}
                     filterMode={filterMode}
+                    breakdown={selectedRouteBreakdown}
                   />
                   {others.length > 0 && (
                     <MoreOptionsSection
@@ -611,6 +626,7 @@ export function RouteSheet({
                       conditionFor={conditionFor}
                       dayAccent={dayAccent}
                       filterMode={filterMode}
+                      selectedRouteBreakdown={selectedRouteBreakdown}
                     />
                   )}
                 </div>
@@ -647,6 +663,19 @@ interface RouteCardProps {
   onClick: () => void;
   dayAccent: string;
   filterMode: FilterMode;
+  /**
+   * Per-route shaded/sunny/glare breakdown rendered as a slim
+   * three-color bar at the bottom of the card. Only the SELECTED
+   * route knows its colored segments at the App.tsx level, so this
+   * is null for other cards — they just don't show the bar.
+   */
+  breakdown?: SegmentBreakdown | null;
+}
+
+export interface SegmentBreakdown {
+  shadedPct: number; // building shadow + tree canopy + low-sun-angle
+  sunnyPct: number; // direct sun
+  glarePct: number; // glass-glare segments
 }
 
 const GMA_ACCENT = 'rgb(245, 158, 11)'; //         amber-500 (sun fallback)
@@ -675,6 +704,7 @@ function RouteCard({
   onClick,
   dayAccent,
   filterMode,
+  breakdown,
 }: RouteCardProps) {
   const showFastestBadge = variant === 'fastest' || variant === 'combined';
   const showGmaBadge = variant === 'gma' || variant === 'combined';
@@ -704,12 +734,13 @@ function RouteCard({
             }
           : {
               borderColor: 'var(--gma-border)',
-              background:
+              // Subtle top-to-bottom gradient on every card — adds
+              // depth without dominating. GMA/combined cards bias
+              // toward an amber wash; plain cards stay neutral.
+              backgroundImage:
                 variant === 'gma' || variant === 'combined'
-                  ? 'color-mix(in srgb, var(--gma-surface) 92%, ' +
-                    gmaAccent +
-                    ' 8%)'
-                  : 'var(--gma-surface)',
+                  ? `linear-gradient(180deg, color-mix(in srgb, var(--gma-surface) 90%, ${gmaAccent} 10%) 0%, var(--gma-surface) 100%)`
+                  : 'linear-gradient(180deg, color-mix(in srgb, var(--gma-surface) 96%, transparent) 0%, var(--gma-surface) 100%)',
               boxShadow: `inset 4px 0 0 0 ${accentBorderLeft}`,
             }
       }
@@ -774,6 +805,12 @@ function RouteCard({
           >
             {explanation}
           </div>
+        )}
+        {/* Breakdown bar only on the selected card — only the chosen
+         * route has its colored segments computed at the App level,
+         * so the other cards leave the slot empty. */}
+        {breakdown && selected && (
+          <SegmentBreakdownBar breakdown={breakdown} />
         )}
       </div>
 
@@ -1066,6 +1103,7 @@ interface MoreOptionsSectionProps {
   conditionFor: (route: ScoredRoute) => RouteCondition | null;
   dayAccent: string;
   filterMode: FilterMode;
+  selectedRouteBreakdown: SegmentBreakdown | null;
 }
 
 function MoreOptionsSection({
@@ -1078,6 +1116,7 @@ function MoreOptionsSection({
   conditionFor,
   dayAccent,
   filterMode,
+  selectedRouteBreakdown,
 }: MoreOptionsSectionProps) {
   return (
     <div>
@@ -1112,6 +1151,7 @@ function MoreOptionsSection({
               onClick={() => onSelectRoute(idx)}
               dayAccent={dayAccent}
               filterMode={filterMode}
+              breakdown={selectedRouteBreakdown}
             />
           ))}
         </div>
@@ -1196,6 +1236,66 @@ interface InlineRouteLegendProps {
  * Shape + gradient palette match the floating version verbatim so the
  * color↔condition mapping reads the same.
  */
+function SegmentBreakdownBar({ breakdown }: { breakdown: SegmentBreakdown }) {
+  // Round each bucket but force the total to display as 100 % by
+  // absorbing any rounding remainder into the biggest bucket.
+  const raw = [breakdown.shadedPct, breakdown.sunnyPct, breakdown.glarePct];
+  const rounded = raw.map((v) => Math.round(v));
+  const drift = rounded.reduce((a, b) => a + b, 0) - 100;
+  if (drift !== 0) {
+    let biggestIdx = 0;
+    for (let i = 1; i < rounded.length; i++) {
+      if (rounded[i]! > rounded[biggestIdx]!) biggestIdx = i;
+    }
+    rounded[biggestIdx]! -= drift;
+  }
+  const [sh, su, gl] = rounded;
+
+  return (
+    <div className="mt-2">
+      <div
+        className="flex h-1.5 w-full overflow-hidden rounded-full"
+        style={{ background: 'var(--gma-input-bg)' }}
+        aria-label={`${sh}% shaded, ${su}% sunny, ${gl}% glass glare`}
+      >
+        {sh > 0 && (
+          <span
+            style={{
+              width: `${sh}%`,
+              background: 'rgb(59, 130, 246)',
+            }}
+          />
+        )}
+        {su > 0 && (
+          <span
+            style={{
+              width: `${su}%`,
+              background: 'rgb(245, 158, 11)',
+            }}
+          />
+        )}
+        {gl > 0 && (
+          <span
+            style={{
+              width: `${gl}%`,
+              background: 'rgb(220, 38, 38)',
+            }}
+          />
+        )}
+      </div>
+      <div
+        className="mt-1 text-[10px]"
+        style={{
+          color: 'var(--gma-text-secondary)',
+          fontFamily: 'var(--font-data)',
+        }}
+      >
+        {sh}% shaded · {su}% sunny{gl > 0 ? ` · ${gl}% glass glare` : ''}
+      </div>
+    </div>
+  );
+}
+
 function InlineRouteLegend({ mode, snow }: InlineRouteLegendProps) {
   const variant = pickLegendVariant(mode, snow);
   const [expanded, setExpanded] = useState(false);
