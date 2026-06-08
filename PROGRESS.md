@@ -4449,3 +4449,58 @@ Manual verification of the chat-driven pipeline:
    ```
 5. SearchBar inputs visibly fill with "One Vanderbilt, New York" and "Bryant Park, New York", both pulsing amber for ~900 ms.
 6. Route appears on the map, scored avoid-sun, GMA Pick card surfaces.
+
+---
+
+## 2026-06-08 — Demo rebuilt: 70 s feature tour, no navigation
+
+Replaced the prior 36 s "one-prompt → nav-sim" demo with a 70 s feature-tour walkthrough. The new sequence keeps the headline "one prompt fills everything" beat (now 0-15 s) and then spends the remaining 55 s cycling through every feature the app exposes: all-routes-on-map overview, multi-card route sheet, route-selection switching, time-of-day scrubbing, every filter mode, and a glare close-up. Navigation mode is never entered.
+
+### 1. New GMACanvas prop: `alternateRoutes` ([src/components/GMACanvas.tsx](src/components/GMACanvas.tsx))
+
+```ts
+alternateRoutes?: ReadonlyArray<{
+  polyline: ReadonlyArray<{ lat: number; lng: number }>;
+}> | null;
+```
+
+When non-empty, GMACanvas paints a new `PathLayer<{polyline}>` BEFORE the route-comfort overlay halo. Renders as slate-500 @ 63 % alpha (`[100, 116, 139, 160]`) at 6 px width, capRounded/jointRounded, non-pickable. Reads as Google-Maps' "here's your other options" grey alternates style — the selected route still draws on top with full color so the chosen path stays dominant. Added to the layers useMemo dep array so flipping the prop instantly re-renders.
+
+### 2. New App.tsx state: `showAllRoutes` + `resultRef`
+
+- `showAllRoutes: boolean` — when true, App.tsx derives `result.routes.filter((_, i) => i !== safeIdx).map((r) => ({ polyline: r.polyline }))` and passes it to GMACanvas's new prop. Off by default; toggled on at t=20 s + t=60 s in the demo sequence.
+- `resultRef: React.MutableRefObject<{ routes: ScoredRoute[] } | null>` — kept in sync with the `result` memo via a tiny `useEffect`. The demo callback reads from this ref at scheduled steps (`resultRef.current`) rather than from the closure-captured `result`, so multi-second deferred steps like t=25 s + t=29 s see the routes that loaded ASYNCHRONOUSLY during the chat scene, not stale null from when the demo started.
+
+### 3. Demo sequence rewrite ([src/App.tsx](src/App.tsx) `runDemoSequence`)
+
+| t (s) | Event |
+|---|---|
+| 0 | Empty origin/destination, time locked to 2 PM, filter = no-preference, camera frames One Vanderbilt → Bryant Park corridor. |
+| 1.6 | Intro card fades out. |
+| 3 | AI chat panel opens. Typewriter starts (30 ms/char): *"I am at One Vanderbilt running late to an executive presentation in a heavy wool suit. Get me to Bryant Park. I am overheating."* Auto-submits ~300 ms after the last keystroke (~t=7.75 s). |
+| ~10–14 | Gemini classifies routing → extracts originQuery + destinationQuery + sun_preference=avoid_sun + intensity=high + urgency=high → forwardGeocode fires twice → setOrigin + setDestination flash amber → route fetches + scores → filter applies avoid-sun. |
+| 15 | Chat panel closes (AI reasoning bubble has been on-screen long enough to read). |
+| 20 | `setShowAllRoutes(true)` → all 3 candidate polylines visible (2 muted greys under the colored primary). Camera pulls back to zoom 16 / pitch 25 to frame the full route span. |
+| 25 | `setSelectedRouteIdx(1)` → user "clicks" route 2. Map highlight swaps to the alternate's colored polyline; route-sheet selection follows. |
+| 29 | `setSelectedRouteIdx(2)` (or 1 fallback if only 2 routes returned). Third option highlights. |
+| 33 | Time slider animates 8 AM → 2 PM over 4 s via rAF; glare hotspots fade in as sun climbs above 10° elevation, shadows rotate, route colors recompute live. Selection snapped back to idx 0 so the glare-on-route effect lands on GMA Pick. |
+| 39 | Filter → `avoid-wind`; all 3 route cards recompute wind exposure; polylines switch palette. |
+| 44 | Filter → `sunny-spot`; yellow sunny-spot stars layer activates. |
+| 49 | Filter → `avoid-both`; combined-comfort score surfaces. |
+| 54 | Filter → `avoid-sun` (intensity 1.5), `setShowAllRoutes(false)` to mute alternates, camera zoom 18 / pitch 45 / bearing 25 for glare close-up, 700 ms hotspot pulse, toast: *"🔆 Glass glare — +15°F"*. |
+| 60 | `setShowAllRoutes(true)` re-enabled, camera flies back to zoom 15 / pitch 30 — full beauty shot with all 3 polylines + glare hotspots + tree canopy + street overlay. |
+| 67 | Silent end. `showAllRoutes` flips back off so subsequent user interactions start in normal single-route mode. Start Demo button reappears. |
+
+Total: **70 s** (the 67 → 70 s tail is the closing FlyTo finishing its 3 s interpolation, then the button reveal animation).
+
+### 4. Navigation simulation REMOVED
+
+The prior demo's t=28 → t=34 chevron-walk navigation simulation is gone. No `setNavigating(true)`, no rAF live-coord interpolation, no follow-cam. The user explicitly asked for "no navigation mode" and the new schedule reuses those seconds for the filter tour. The `selectedRoute` dep in `runDemoSequence`'s useCallback dropped accordingly — only `handleSubmitPreference` and `setTheme` remain in the deps array.
+
+### 5. Tooltip → toast for glare moment
+
+The spec asked for an inline tooltip on a red glare segment. Implemented as `setToastMessage('🔆 Glass glare — +15°F')` instead — easier to position legibly, auto-dismisses, and the existing toast surface is already styled. The glare-hotspot dots still pulse for 700 ms at the same beat so the viewer's eye locks onto them.
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (existing >500 kB chunk advisory only)

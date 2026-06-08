@@ -235,6 +235,16 @@ export interface GMACanvasProps {
    * vivid (so the route + glare hotspots glow against the dark map).
    */
   theme: 'light' | 'dark';
+  /**
+   * Non-selected candidate routes — rendered as muted grey lines BELOW
+   * the selected route's colored segments, Google-Maps alternate-route
+   * style. Used by the demo sequence to show all 3 route options
+   * simultaneously so the viewer can see the candidate set at a glance.
+   * Pass null/empty to hide the alternates layer entirely (default).
+   */
+  alternateRoutes?: ReadonlyArray<{
+    polyline: ReadonlyArray<{ lat: number; lng: number }>;
+  }> | null;
 }
 
 export function GMACanvas({
@@ -256,6 +266,7 @@ export function GMACanvas({
   sunnySpots,
   glarePulsePhase = 0,
   onMapTap,
+  alternateRoutes = null,
 }: GMACanvasProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const isDark = theme === 'dark';
@@ -413,6 +424,34 @@ export function GMACanvas({
             // Re-render whenever the pulse phase ticks so the radius
             // recomputes from the new multiplier.
             getRadius: glarePulsePhase,
+          },
+        }),
+      );
+    }
+
+    // ---- alternate route polylines (Google-Maps style grey) --------
+    // Rendered BELOW the selected route so the user can see all 3
+    // candidate paths at once when App.tsx passes a non-empty
+    // `alternateRoutes` array. Muted grey at low opacity so they read
+    // as "the options you didn't pick" rather than competing with the
+    // primary colored route.
+    if (alternateRoutes && alternateRoutes.length > 0) {
+      out.push(
+        new PathLayer<{ polyline: ReadonlyArray<{ lat: number; lng: number }> }>({
+          id: 'route-alternates',
+          // Spread to a mutable array — deck.gl's typings flag readonly.
+          data: [...alternateRoutes],
+          getPath: (d) => d.polyline.map((p) => [p.lng, p.lat] as [number, number]),
+          getColor: [100, 116, 139, 160] as Color, // slate-500 @ ~0.63
+          getWidth: 6,
+          widthUnits: 'pixels',
+          widthMinPixels: 5,
+          capRounded: true,
+          jointRounded: true,
+          pickable: false,
+          parameters: { depthCompare: 'always', depthWriteEnabled: false },
+          updateTriggers: {
+            getPath: alternateRoutes,
           },
         }),
       );
@@ -680,6 +719,7 @@ export function GMACanvas({
     destinationPoint,
     sunnySpots,
     glarePulsePhase,
+    alternateRoutes,
   ]);
 
   const getTooltip = useCallback(

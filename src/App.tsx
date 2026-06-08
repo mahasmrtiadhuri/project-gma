@@ -153,6 +153,13 @@ export default function App() {
   const [originFlashKey, setOriginFlashKey] = useState(0);
   const [destinationFlashKey, setDestinationFlashKey] = useState(0);
 
+  // When true, GMACanvas renders non-selected candidate routes as
+  // muted grey lines underneath the selected colored route — the
+  // Google-Maps "here's all your options" overview look. Driven by
+  // the demo sequence (t=20 → t=29) so the viewer sees all 3 paths
+  // at once before the demo zooms in on individual cards.
+  const [showAllRoutes, setShowAllRoutes] = useState(false);
+
   // Theme toggle — defaults to 'light', persisted to localStorage by
   // the hook. Applies `class="dark"` to <html>, which trips the dark
   // tokens in globals.css and crossfades the entire UI in 300 ms.
@@ -164,6 +171,11 @@ export default function App() {
   const isDemoMode = useDemoMode();
   const [demoRunning, setDemoRunning] = useState(false);
   const demoTimeoutsRef = useRef<number[]>([]);
+  // Ref-mirror of the `result` memo so the demo sequence can read the
+  // latest scored-routes payload at every scheduled step rather than
+  // closing over a stale snapshot from the moment runDemoSequence was
+  // created. Updated by a useEffect below right after `result` derives.
+  const resultRef = useRef<{ routes: ScoredRoute[] } | null>(null);
   // demoLiveCoord shadows the real GPS during the demo's navigation
   // simulation segment (t=52s onward). When set, it replaces the live
   // location reading for the chevron + follow-cam so the camera
@@ -1011,6 +1023,13 @@ export default function App() {
     console.log(`[GMA] Routes re-ranked: ${scoreSummary}`);
   }, [result]);
 
+  // Mirror `result` into a ref so the demo sequence sees live data at
+  // every scheduled step (the useCallback below captures `result` once
+  // at creation; routes load asynchronously after the demo starts).
+  useEffect(() => {
+    resultRef.current = result;
+  }, [result]);
+
   // Diagnostic: surface the actual polyline shape when the user picks a
   // route. A real Routes API walking polyline is 50–200 points; 2 points
   // means we fell back to the straight-line fixture in hlciRouter.
@@ -1369,17 +1388,28 @@ export default function App() {
   );
 
   // ---- Demo Mode scripted sequence ----------------------------------
-  // ~36 s scripted walkthrough for the recorded promo video. The 2026-
-  // 06-08 rebuild reframes the entire demo around ONE PROMPT: the user
-  // sees an empty map + empty search fields, the AI chat opens, a
-  // long contextual prompt types itself, and then origin / destination
-  // / filter / route ALL populate from that single Gemini submission.
-  // Nothing is pre-seeded — every field the viewer sees fill comes
-  // from the chat handler's geocode + setOrigin / setDestination /
-  // setFilterMode pipeline.
+  // 70 s feature-tour walkthrough. The 2026-06-08 rebuild reframes the
+  // demo around showcasing EVERY feature without entering navigation
+  // mode. Storyline:
+  //
+  //   0-15s  One Prompt — empty fields → AI chat → typewriter → Gemini
+  //          fills origin + destination, scores routes, applies filter.
+  //   15-32s Three Routes — all 3 polylines visible, sheet shows all 3
+  //          cards, demo clicks through routes 2 and 3 to show how the
+  //          selection changes the map highlight + comfort delta.
+  //   32-39s Time Lapse — slider animates 8 AM → 2 PM, glare hotspots
+  //          appear, colors recompute live.
+  //   39-54s Filter Tour — cycles avoid-wind → sunny-spot → avoid-both
+  //          → avoid-sun, each filter recolors all 3 routes + comfort
+  //          score cards.
+  //   54-67s Glare Closeup — zooms in on GMA Pick, glare-segment toast
+  //          highlights +15°F hotspots, then fly-out to a final beauty
+  //          shot of the full map.
+  //   67-70s Silent end — Start Demo reappears for replay.
   //
   // Solar time is locked to 2 PM throughout so glass-glare hotspots
-  // are always lit regardless of when the demo is recorded.
+  // are always lit regardless of when the demo is recorded. Navigation
+  // mode is never entered.
   const runDemoSequence = useCallback(() => {
     console.log('[GMA] Demo sequence starting');
     setDemoRunning(true);
@@ -1446,23 +1476,21 @@ export default function App() {
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
 
-    // ─── t = 5 s : AI chat panel opens ──────────────────────────
-    schedule(5_000, () => {
+    // ─── t = 3 s : AI chat panel opens + typewriter starts ──────
+    // Earlier than the prior 5 s open / 8 s typing — the new 70 s
+    // schedule shifts the chat scene 2 s sooner so the long feature
+    // tour (filters / time scrub / glare closeup) has room to land.
+    schedule(3_000, () => {
       setChatMessages([]);
       setChatOpen(true);
-    });
-
-    // ─── t = 8 s : typewriter the full contextual prompt ────────
-    // Single prompt that exercises every extraction field — origin,
-    // destination, sun preference, intensity, urgency, body context.
-    // 30 ms/char so the full ~170-char prompt finishes in ~5 s.
-    schedule(8_000, () => {
+      // Start typing 400 ms after the panel slides up so the viewer
+      // sees the empty chat surface settle first.
       const fullText =
-        'I am at One Vanderbilt and running late to an executive ' +
-        'presentation in a heavy wool suit. I need to get to Bryant ' +
-        'Park. I am already overheating. Optimize my path.';
+        'I am at One Vanderbilt running late to an executive ' +
+        'presentation in a heavy wool suit. Get me to Bryant Park. ' +
+        'I am overheating.';
       const CHAR_INTERVAL = 30; // ms
-      const TYPE_START = 200; // small lead-in before the first keystroke lands
+      const TYPE_START = 400;
       setDemoTypewriterText('');
       for (let i = 1; i <= fullText.length; i++) {
         const id = window.setTimeout(() => {
@@ -1470,14 +1498,12 @@ export default function App() {
         }, TYPE_START + i * CHAR_INTERVAL);
         demoTimeoutsRef.current.push(id);
       }
-      // Auto-submit ~250 ms after typing completes — that brief pause
-      // sells "the AI is reading what it typed" to the viewer.
-      const submitDelay = TYPE_START + fullText.length * CHAR_INTERVAL + 250;
+      // Auto-submit ~300 ms after typing completes — short pause
+      // sells "the AI is reading what it typed" to the viewer. Total
+      // typing budget: 400 + 145*30 = 4750 ms → submit ~t=7.75 s.
+      const submitDelay = TYPE_START + fullText.length * CHAR_INTERVAL + 300;
       const submitId = window.setTimeout(() => {
         void handleSubmitPreference(fullText);
-        // Release the typewriter override so future user input would
-        // be free-form, but keep the panel open so the AI reply bubble
-        // can land visibly.
         const releaseId = window.setTimeout(
           () => setDemoTypewriterText(null),
           300,
@@ -1487,28 +1513,119 @@ export default function App() {
       demoTimeoutsRef.current.push(submitId);
     });
 
-    // ─── t ≈ 17 s : close chat after Gemini reply lands ─────────
-    // Gemini call + forward-geocode of two queries takes ~2 s. By
-    // t=17s the origin/destination fields have flashed amber, the
-    // route has been fetched + scored, and the AI's reasoning bubble
-    // is on-screen long enough to read.
-    schedule(17_000, () => setChatOpen(false));
+    // ─── t = 15 s : close chat (fields filled, route loaded) ────
+    // By t=15s the Gemini call (~1.5 s) + dual forward-geocode
+    // (~1 s) + Routes API fetch + score (~1 s) have all settled, the
+    // origin/destination inputs flashed amber, the route is on the
+    // map under the 'avoid-sun' filter, and the reasoning bubble has
+    // been visible for several seconds. Time to dismiss the chat.
+    schedule(15_000, () => setChatOpen(false));
 
-    // ─── t = 19 s : zoom in to street level to reveal the route ─
-    schedule(19_000, () => {
+    // ─── t = 20 s : show ALL 3 routes on map ────────────────────
+    // Camera frames the full origin → destination span at zoom 15;
+    // `showAllRoutes` flips on so GMACanvas paints the 2 non-selected
+    // candidates as muted grey lines under the colored primary route.
+    // The route sheet on the right is already showing all 3 cards
+    // (RouteSheet renders every entry in `result.routes`).
+    schedule(20_000, () => {
+      setShowAllRoutes(true);
       setViewState({
         longitude: FRAME_LNG,
         latitude: FRAME_LAT,
-        zoom: 17,
-        pitch: 30,
+        zoom: 16,
+        pitch: 25,
         bearing: 0,
-        transitionDuration: 2_500,
+        transitionDuration: 2_000,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
     });
 
-    // ─── t = 23 s : glare hotspot close-up + pulse ──────────────
-    schedule(23_000, () => {
+    // ─── t = 25 s : click route 2 (GMA PICK) ────────────────────
+    // The result memo sorts by HLCI cost — index 0 IS the GMA Pick
+    // under 'avoid-sun'. The demo opened on it. Tap index 1 (the
+    // fastest alternate) so the user sees the selection swap on
+    // both the map and the route cards. Read from resultRef so the
+    // value reflects the routes loaded mid-demo, not stale closure.
+    schedule(25_000, () => {
+      const r = resultRef.current;
+      if (r && r.routes.length > 1) {
+        setSelectedRouteIdx(1);
+        console.log('[GMA] Demo: selected route idx 1');
+      }
+    });
+
+    // ─── t = 29 s : click route 3 (third option) ────────────────
+    schedule(29_000, () => {
+      const r = resultRef.current;
+      if (r && r.routes.length > 2) {
+        setSelectedRouteIdx(2);
+        console.log('[GMA] Demo: selected route idx 2');
+      } else if (r && r.routes.length > 1) {
+        // Routes API returned only 2 alternates — fall back to idx 1.
+        setSelectedRouteIdx(1);
+      }
+    });
+
+    // ─── t = 33 s : animate time slider 8 AM → 2 PM ────────────
+    // 4 s linear scrub. Glass-glare hotspots fade in as the sun
+    // climbs past elevation 10°, building shadows shorten + rotate,
+    // every per-segment color recomputes in lockstep with demoHour.
+    schedule(33_000, () => {
+      const startMs = performance.now();
+      const duration = 4_000;
+      const fromHour = 8;
+      const toHour = 14;
+      setDemoHour(fromHour);
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - startMs) / duration);
+        const hour = fromHour + (toHour - fromHour) * t;
+        setDemoHour(Math.round(hour));
+        if (t < 1) {
+          demoHourRafRef.current = requestAnimationFrame(tick);
+        } else {
+          demoHourRafRef.current = null;
+        }
+      };
+      demoHourRafRef.current = requestAnimationFrame(tick);
+      // Snap back to GMA Pick when the time scrub starts so the
+      // glare-on-route effect lands on the most relevant polyline.
+      setSelectedRouteIdx(0);
+    });
+
+    // ─── t = 39 s : filter → avoid-wind ────────────────────────
+    // All 3 route cards recompute their wind exposure; polylines
+    // switch from amber/blue (sun) to emerald/violet (wind).
+    schedule(39_000, () => {
+      setFilterMode('avoid-wind');
+      setIntensityMultiplier(1.0);
+      console.log('[GMA] Demo: filter → avoid-wind');
+    });
+
+    // ─── t = 44 s : filter → sunny-spot ────────────────────────
+    schedule(44_000, () => {
+      setFilterMode('sunny-spot');
+      setIntensityMultiplier(1.0);
+      console.log('[GMA] Demo: filter → sunny-spot');
+    });
+
+    // ─── t = 49 s : filter → avoid-both ────────────────────────
+    schedule(49_000, () => {
+      setFilterMode('avoid-both');
+      setIntensityMultiplier(1.0);
+      console.log('[GMA] Demo: filter → avoid-both');
+    });
+
+    // ─── t = 54 s : back to avoid-sun + zoom into GMA Pick ─────
+    // Final feature beat: glare segment toast + close-up reveal of
+    // the colored polyline (orange/blue/green segments + red glare
+    // dots). The toast stands in for the spec'd inline tooltip on
+    // a red segment — easier to position legibly and disappears
+    // automatically after a few seconds.
+    schedule(54_000, () => {
+      setFilterMode('avoid-sun');
+      setIntensityMultiplier(1.5);
+      setSelectedRouteIdx(0); // GMA Pick
+      setShowAllRoutes(false); // mute alternates so the primary route reads clearly
       setViewState({
         longitude: FRAME_LNG,
         latitude: FRAME_LAT,
@@ -1518,8 +1635,9 @@ export default function App() {
         transitionDuration: 2_500,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
+      // Pulse the glare hotspots so the viewer's eye locks onto them.
       const pulseStart = performance.now();
-      const pulseDuration = 600;
+      const pulseDuration = 700;
       const pulseTick = (now: number) => {
         const t = Math.min(1, (now - pulseStart) / pulseDuration);
         setGlarePulsePhase(t);
@@ -1531,73 +1649,40 @@ export default function App() {
         }
       };
       glarePulseRafRef.current = requestAnimationFrame(pulseTick);
+      setToastMessage('🔆 Glass glare — +15°F');
     });
 
-    // ─── t = 28 s : navigation simulation (6 s walk) ────────────
-    schedule(28_000, () => {
-      if (!selectedRoute) return;
-      const polyline = selectedRoute.polyline;
-      if (polyline.length < 2) return;
-      setNavigating(true);
-      const first = polyline[0]!;
-      setViewState({
-        longitude: first.lng,
-        latitude: first.lat,
-        zoom: 18,
-        pitch: 45,
-        bearing: 0,
-        transitionDuration: 2_000,
-        transitionInterpolator: new FlyToInterpolator(),
-      } as MapViewState);
-      const startMs = performance.now();
-      const durationMs = 6_000;
-      const tick = (now: number) => {
-        const elapsed = now - startMs;
-        const t = Math.min(1, elapsed / durationMs);
-        const idxFloat = t * (polyline.length - 1);
-        const i0 = Math.floor(idxFloat);
-        const i1 = Math.min(polyline.length - 1, i0 + 1);
-        const frac = idxFloat - i0;
-        const a = polyline[i0]!;
-        const b = polyline[i1]!;
-        setDemoLiveCoord({
-          lat: a.lat + (b.lat - a.lat) * frac,
-          lng: a.lng + (b.lng - a.lng) * frac,
-        });
-        if (t < 1) {
-          demoNavRafRef.current = requestAnimationFrame(tick);
-        } else {
-          demoNavRafRef.current = null;
-        }
-      };
-      demoNavRafRef.current = requestAnimationFrame(tick);
-    });
-
-    // ─── t = 34 s : exit nav, fly back to full-route view ───────
-    schedule(34_000, () => {
-      if (demoNavRafRef.current != null) {
-        cancelAnimationFrame(demoNavRafRef.current);
-        demoNavRafRef.current = null;
-      }
-      setDemoLiveCoord(null);
-      setNavigating(false);
+    // ─── t = 60 s : zoom out to full beauty shot ───────────────
+    // Re-enable showAllRoutes so all 3 polylines are visible
+    // alongside the glare hotspots, tree canopy, street overlay —
+    // the dense final composition.
+    schedule(60_000, () => {
+      setShowAllRoutes(true);
       setViewState({
         longitude: FRAME_LNG,
         latitude: FRAME_LAT,
         zoom: 15,
         pitch: 30,
         bearing: 0,
-        transitionDuration: 2_500,
+        transitionDuration: 3_000,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
     });
 
-    // ─── t = 36 s : silent end ─────────────────────────────────
-    schedule(36_000, () => {
+    // ─── t = 67 s : silent end ─────────────────────────────────
+    // Demo complete. Show-all-routes flips back off so the next user
+    // interaction starts in normal single-route mode. Start Demo
+    // button reappears for replay.
+    schedule(67_000, () => {
+      setShowAllRoutes(false);
       setDemoRunning(false);
       demoTimeoutsRef.current = [];
     });
-  }, [handleSubmitPreference, setTheme, selectedRoute]);
+    // Note: route selection at t=25/29 reads `resultRef.current` (live)
+    // not the closure `result`, so this callback doesn't need `result`
+    // in its deps. Navigation simulation was removed, so `selectedRoute`
+    // is no longer referenced either.
+  }, [handleSubmitPreference, setTheme]);
 
   // ---- live navigation derivations -----------------------------------
   // routeProgress / nextTurn / remaining-time recompute on every new
@@ -1860,6 +1945,13 @@ export default function App() {
         sunnySpots={sunnySpots}
         glarePulsePhase={glarePulsePhase}
         onMapTap={handleMapTap}
+        alternateRoutes={
+          showAllRoutes && result && result.routes.length > 1
+            ? result.routes
+                .filter((_, i) => i !== safeIdx)
+                .map((r) => ({ polyline: r.polyline }))
+            : null
+        }
       />
 
       {pendingTap && !navigating && (
