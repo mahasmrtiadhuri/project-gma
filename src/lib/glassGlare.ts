@@ -72,6 +72,18 @@ const KNOWN_GLASS_TOWERS = [
   'tower 56',
   'paramount plaza',
   '300 madison',
+  // 2026-06-08 (final demo): 1251 Avenue of the Americas → Chrysler
+  // Building corridor. The polyline runs past Bank of America Tower
+  // (1 Bryant Park), 1251 Avenue of the Americas itself (Exxon
+  // Building), and the McGraw-Hill Building — all glass-clad
+  // mid/late-century towers that drive the demo's glare narrative.
+  '1 bryant park',
+  'bank of america',
+  '1251 avenue',
+  '1251 avenue of the americas',
+  'exxon building',
+  'mcgraw hill building',
+  'mcgraw-hill building',
 ];
 
 const UNTAGGED_MODERN_GLASS_PROBABILITY = 0.3;

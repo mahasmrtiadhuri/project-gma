@@ -4504,3 +4504,79 @@ The spec asked for an inline tooltip on a red glare segment. Implemented as `set
 ### Build status
 - `npx tsc -b` clean
 - `npx vite build` clean (existing >500 kB chunk advisory only)
+
+---
+
+## 2026-06-08 — Final demo cut: 1251 Av of Americas → Chrysler Building (68 s)
+
+Final-cut demo per the recorded promo spec. New corridor, new typewriter prompt, new timeline anchored to t=18s for the auto-submit, plus a t=20s fallback that force-sets origin/destination if Gemini or geocoding fails.
+
+### 1. New demo route ([src/App.tsx](src/App.tsx) `runDemoSequence`)
+
+| Field | Value |
+|---|---|
+| Origin | `1251 Avenue of the Americas` @ (40.7594, −73.9812) |
+| Destination | `Chrysler Building` @ (40.7516, −73.9755) |
+| Camera framing | lng −73.9790, lat 40.7555 (slightly east of midpoint so the Chrysler spire reads at the SE edge, BoA Tower at NW) |
+| Bryant Park focus | lat 40.7536, lng −73.9832 (used at t=39s) |
+
+The corridor (~1 km diagonal SE) passes Bank of America Tower (1 Bryant Park), the McGraw-Hill Building, Bryant Park's tree canopy, and ends at the Chrysler Building — every classifier branch (glare, tree canopy, sunny street, shaded street, Venturi canyon) fires along the polyline at 2 PM.
+
+### 2. New 68 s timeline
+
+| t (s) | Event |
+|---|---|
+| 0 | Empty fields, framed on Midtown corridor (z=15, pitch 30, bearing 0). Time locked to 2 PM. Filter = no-preference. `showAllRoutes` off. |
+| 1.6 | Intro card fades. |
+| 3 | AI chat opens. Typewriter starts at **50 ms/char** (per spec) on: *"Running late to a presentation in a heavy suit. Carrying a delicate cardboard model. I am already overheating. Optimize my path."* |
+| ~10 | Typewriter completes; typed prompt sits in the textarea for ~8 s — sells "the AI is reading what it typed". |
+| 18 | **Auto-submit** (anchored exactly per spec, decoupled from typewriter duration). `handleSubmitPreference` geocodes both queries → setOrigin / setDestination → flash counters bump → SearchBar inputs pulse amber → routes fetch → avoid-sun filter applies. |
+| 20 | **Fallback origin/destination** — if either is still null (no Gemini key / network error / geocoder denied), force-set `ORIGIN_POINT` / `DESTINATION_POINT` and re-bump flash counters so the demo always shows a route. Force `avoid-sun` even if Gemini's reply hasn't landed. |
+| 24 | Chat closes. Route sheet shows 3 cards — FASTEST, GMA PICK (~N°F cooler), third option. |
+| 28 | `showAllRoutes` flips on → all 3 polylines visible (2 muted greys under colored primary). Camera dips to z=16, pitch 25 so amber-sunny vs blue-shaded segments read cleanly. |
+| 33 | Time slider animates 8 AM → 2 PM over 4 s via rAF; glare hotspots fade in around BoA Tower + glass neighbors and pulse for 800 ms. |
+| 39 | Camera flies to Bryant Park (lat 40.7536, lng −73.9832, z=17, pitch 35). Toast: *"🌳 Tree canopy — 75% solar attenuation"*. |
+| 43 | Filter → `avoid-wind`. Camera pulls back to z=16. Polylines recolor emerald/violet. |
+| 48 | Filter → `sunny-spot`. Yellow stars layer activates near Bryant Park outdoor areas. |
+| 52 | Filter → `avoid-both`. Combined-comfort cards surface. |
+| 56 | Filter → `avoid-sun` (intensity 1.5). `showAllRoutes` off, camera zooms in on GMA Pick at z=18, pitch 45, bearing 25. Glare pulse + toast: *"🔆 Glass glare detected near Bank of America Tower"*. |
+| 62 | `showAllRoutes` re-enabled. Pull out to **z=14** beauty shot — full corridor, all glare hotspots, tree canopy, 3 polylines, street overlay. |
+| 68 | Silent end. `showAllRoutes` flips off so user interactions resume single-route mode. Start Demo reappears. |
+
+### 3. Fallback origin/destination at t=20 s
+
+Per spec ("Pre-set demo origin/destination at t=0s as fallback even before AI fills them"). Implemented as a **deferred** fallback rather than a pre-set: at t=0 the fields are visually empty (so the AI-fill reveal at t=18s is the headline beat), but at t=20s — 2 s after the auto-submit — a check fires:
+
+```ts
+setOrigin((current) => {
+  if (current) return current;
+  setOriginFlashKey((k) => k + 1);
+  return { point: ORIGIN_POINT, label: ORIGIN_LABEL };
+});
+```
+
+This way the demo always shows a complete route regardless of whether Gemini / geocoding succeeded. The flash-counter bump means the field pulses amber in both code paths — visually identical to the user, just with different state lineage.
+
+### 4. KNOWN_GLASS_TOWERS additions ([src/lib/glassGlare.ts](src/lib/glassGlare.ts))
+
+Per spec, all the towers along the new corridor that need name-match classification (so we don't depend on the 30 % probabilistic fallback):
+
+```ts
+'1 bryant park',
+'bank of america',
+'1251 avenue',
+'1251 avenue of the americas',
+'exxon building',
+'mcgraw hill building',
+'mcgraw-hill building',
+```
+
+(`chrysler` / `chrysler building` / `one bryant park` were already in the list from the prior pass.)
+
+### 5. Navigation mode never entered
+
+Per spec. The demo's `runDemoSequence` never calls `setNavigating(true)`. The `selectedRoute` dep was already dropped from the useCallback's deps array last session.
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (existing >500 kB chunk advisory only)
