@@ -1,64 +1,101 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface DemoIntroOverlayProps {
   /** True from the moment START DEMO is tapped through the end of the
-   *  intro fade-out. App.tsx controls this via a setTimeout. */
+   *  intro hold. App.tsx flips this back to false to begin the fade. */
   visible: boolean;
 }
 
 /**
  * Full-screen white overlay shown for the first ~2 s of every demo run.
- * Fades in over 400 ms, holds, fades out over 400 ms. Blocks pointer
- * interaction ONLY while actually visible — during fade-out and when
- * not in use it returns null entirely so it never traps clicks.
+ * Fades in over 400 ms, holds while `visible` is true, then fades OUT
+ * over 800 ms when `visible` flips back to false, after which it
+ * fully unmounts.
  *
- * Prior bug: the overlay's initial `useEffect` set stage to 'out'
- * even when `visible` was false on mount. The early-return guard
- * `!visible && stage === 'hidden'` then no longer matched, so the
- * overlay rendered invisibly at `opacity: 0` BUT with `pointer-
- * events-auto fixed inset-0 z-400`, swallowing every click on the
- * page (including the Start Demo button itself). The fix below
- * unmounts whenever `visible` is false — there's no fade-out
- * animation any more, but the cinematic intro lands the same way:
- * a clean cut to the map after the 2 s title hold.
+ * Click-safety: pointer-events-auto ONLY while `visible` is true.
+ * During the fade-out and any other "not actively visible" state the
+ * overlay is `pointer-events-none` so it cannot swallow taps targeted
+ * at the underlying chrome. Earlier versions left the overlay
+ * `pointer-events-auto` at opacity 0 and silently blocked every
+ * click on the page — fixed here by gating pointer events on the
+ * `visible` prop directly.
+ *
+ * Title typography is plain Inter — large, slightly tightened tracking
+ * so it reads as a film card rather than a UI label.
  */
 export function DemoIntroOverlay({ visible }: DemoIntroOverlayProps) {
-  const [stage, setStage] = useState<'hidden' | 'in'>('hidden');
+  // Stage timeline: 'hidden' → 'in' → 'out' → 'hidden'.
+  // - 'hidden': not rendered at all.
+  // - 'in': mounted at opacity-1 (after a one-frame fade-in).
+  // - 'out': mounted at opacity-0, transitioning out; unmounted
+  //   after the 800 ms transition completes.
+  const [stage, setStage] = useState<'hidden' | 'in' | 'out'>('hidden');
+  const outTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!visible) {
-      setStage('hidden');
-      return;
+    if (visible) {
+      // Cancel any pending unmount from a previous run.
+      if (outTimerRef.current != null) {
+        window.clearTimeout(outTimerRef.current);
+        outTimerRef.current = null;
+      }
+      // Defer one frame so the browser registers the opacity-0 mount
+      // style before flipping to opacity-1 — otherwise the fade
+      // collapses to an instant appear.
+      const raf = requestAnimationFrame(() => setStage('in'));
+      return () => cancelAnimationFrame(raf);
     }
-    // Defer the opacity transition by one frame so the browser
-    // registers the initial opacity-0 mount style before flipping
-    // to opacity-1 — otherwise the fade-in collapses to an instant
-    // appear.
-    const raf = requestAnimationFrame(() => setStage('in'));
-    return () => cancelAnimationFrame(raf);
+    // visible just flipped false. If we were 'in', start the fade-out.
+    // If we were already 'hidden', stay there.
+    setStage((prev) => (prev === 'in' ? 'out' : 'hidden'));
+    if (outTimerRef.current != null) {
+      window.clearTimeout(outTimerRef.current);
+    }
+    outTimerRef.current = window.setTimeout(() => {
+      setStage('hidden');
+      outTimerRef.current = null;
+    }, 800);
   }, [visible]);
 
-  if (!visible) return null;
+  useEffect(
+    () => () => {
+      if (outTimerRef.current != null) {
+        window.clearTimeout(outTimerRef.current);
+      }
+    },
+    [],
+  );
 
+  if (stage === 'hidden') return null;
+
+  const isIn = stage === 'in';
   return (
     <div
-      className="pointer-events-auto fixed inset-0 flex flex-col items-center justify-center"
+      className="fixed inset-0 flex flex-col items-center justify-center"
       style={{
         zIndex: 400,
         background: '#ffffff',
-        opacity: stage === 'in' ? 1 : 0,
-        transition: 'opacity 400ms ease',
+        opacity: isIn ? 1 : 0,
+        // 400 ms fade-in, 800 ms fade-out (per spec).
+        transition: isIn
+          ? 'opacity 400ms ease'
+          : 'opacity 800ms ease-in-out',
+        // Critical: only catch pointer events while actively visible.
+        // During the fade-out the user must be able to interact with
+        // the map underneath.
+        pointerEvents: isIn ? 'auto' : 'none',
       }}
-      aria-hidden={!visible}
+      aria-hidden={!isIn}
       role="presentation"
     >
       <div
         className="px-6 text-center"
         style={{
-          opacity: stage === 'in' ? 1 : 0,
-          transform: stage === 'in' ? 'translateY(0)' : 'translateY(8px)',
-          transition:
-            'opacity 600ms ease 150ms, transform 600ms ease 150ms',
+          opacity: isIn ? 1 : 0,
+          transform: isIn ? 'translateY(0)' : 'translateY(8px)',
+          transition: isIn
+            ? 'opacity 600ms ease 150ms, transform 600ms ease 150ms'
+            : 'opacity 600ms ease, transform 600ms ease',
         }}
       >
         <h1

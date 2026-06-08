@@ -4002,3 +4002,63 @@ Missing the first line = something else is blocking the click (z-index, pointer-
 
 - `tsc -b` clean
 - `vite build` clean (~1.48 MB main chunk, ~28 s)
+
+---
+
+## 2026-06-08 — Demo polish: drop annotations, smooth fade, scrubber in sidebar, beautiful final state
+
+Five-item polish pass on the recorded demo. The result: pure visual storytelling — no text overlays, no "Arrived at destination" jolt, clean ending.
+
+### 1. Floating annotations deleted
+
+The white voiceover-style pills ("Standard Maps gives you the fastest route" etc) read as noise on the recording. Removed entirely:
+
+- Deleted `src/components/DemoAnnotation.tsx`.
+- App.tsx: dropped the import, the `demoAnnotation` state, every `setDemoAnnotation(...)` call inside `runDemoSequence`, and the `<DemoAnnotation>` mount.
+
+The visual sequence now carries the story — camera moves, color shifts, glare pulse, simulated walk, fly-out.
+
+### 2. Smooth navigation end (no "Arrived")
+
+- Simulated nav duration shortened 8 s → 6 s. The chevron walk now finishes at exactly t=58 s.
+- **New t=58 s step**: cancel the nav rAF, clear `demoLiveCoord`, `setNavigating(false)`, then fly back to the route's full framing (`zoom 15, pitch 30, bearing 0`) over 2.5 s with `FlyToInterpolator`. `setFilterMode('avoid-sun')` so the GMA Pick comfort card lands visible as the camera settles.
+- Result: chevron finishes its walk → camera smoothly zooms back out to reveal the entire 432 Park → Bryant Park polyline, glare hotspots, sunny-spot stars, and the GMA Pick card. No "Arrived at destination" beat.
+
+### 3. Smooth 800 ms intro fade-out
+
+[src/components/DemoIntroOverlay.tsx](src/components/DemoIntroOverlay.tsx) — restored the three-stage timeline (`'hidden' | 'in' | 'out'`) but with proper click-safety guards:
+
+- `pointerEvents` driven directly by `stage === 'in'` rather than by `visible`-vs-stage inference. The overlay is `pointer-events-none` during the fade-out and any other "not actively visible" state. (The earlier bug that swallowed every click was a stage-update race; this version gates pointer events on a single source of truth.)
+- 400 ms fade-in (unchanged), **800 ms ease-in-out fade-out** per spec.
+- Inner content's opacity + translateY now also transitions on fade-out (was instant) so the title type drifts up + dissolves rather than cutting.
+- 800 ms unmount timer cleans up the DOM after the fade completes; pending timer is cancelled if the next demo run starts.
+
+App.tsx: the `setDemoIntroVisible(false)` was already firing at t=1600 ms; the overlay now has 800 ms after that to dissolve into the map underneath.
+
+### 4. TimeScrubber moved to sidebar (desktop)
+
+[src/components/TimeScrubber.tsx](src/components/TimeScrubber.tsx) — new `embedded?: boolean` prop:
+
+- Default (mobile): unchanged — floating `.gma-card` at `bottom: env+12rem`, centered, `min(420px, calc(100vw - 2rem))` wide.
+- Embedded (desktop): flat full-width sidebar item, `rounded-xl`, slate-tinted background, hairline border — sits as a normal flex child rather than floating over the map.
+
+App.tsx: floating scrubber gated to `!useSidebar`; embedded scrubber rendered inside the `<aside>` just above the attribution. Visible whenever `isDemoMode && !navigating` regardless of demoRunning so the user can scrub the time at any point during or outside a demo run.
+
+### 5. Beautiful final state
+
+Combined with item 2's t=58 s fly-out:
+
+- **t=60 s**: ZERO state mutation except `setDemoRunning(false)` + clear the timeouts array. No `setToastMessage`, no annotation, no "Demo complete" text. The sequence ends silently on the freshly-faded-in full-route view.
+- Filter is `avoid-sun` so the GMA Pick card shows the cooler-path comfort delta (~`X°F cooler`) as the camera settles.
+- Glass-glare hotspots still visible (we set planned time to 2 PM earlier in the sequence and never reverted).
+- Start Demo button re-appears via `demoRunning=false` for a replay.
+
+### Files touched
+
+- Deleted: `src/components/DemoAnnotation.tsx`.
+- Updated: [src/components/DemoIntroOverlay.tsx](src/components/DemoIntroOverlay.tsx), [src/components/TimeScrubber.tsx](src/components/TimeScrubber.tsx), [src/App.tsx](src/App.tsx).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.48 MB main chunk, ~28 s)

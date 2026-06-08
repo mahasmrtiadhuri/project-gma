@@ -5,6 +5,12 @@ export interface TimeScrubberProps {
   hour: number;
   /** Live updates as the user drags the slider. */
   onChange: (hour: number) => void;
+  /**
+   * Render as a flat, full-width sidebar item instead of a floating
+   * card. Used on desktop where the scrubber lives at the bottom of
+   * the 380 px left sidebar rather than overlaying the map.
+   */
+  embedded?: boolean;
 }
 
 const MIN_HOUR = 6; //   6 AM
@@ -24,17 +30,34 @@ const MAX_HOUR = 22; //  10 PM
  * but under the desktop sidebar (z-30 sheet, but sidebar lives
  * outside the map area entirely).
  */
-export function TimeScrubber({ visible, hour, onChange }: TimeScrubberProps) {
+export function TimeScrubber({
+  visible,
+  hour,
+  onChange,
+  embedded = false,
+}: TimeScrubberProps) {
   if (!visible) return null;
   const label = formatHour(hour);
-  return (
-    <div
-      className="gma-card pointer-events-auto absolute left-1/2 z-40 -translate-x-1/2 rounded-2xl px-4 py-3"
-      style={{
+  // Embedded mode (desktop sidebar): no absolute positioning, no
+  // floating card chrome — sits as a normal flex item with a top
+  // border separating it from the sibling above.
+  const outerClass = embedded
+    ? 'pointer-events-auto w-full rounded-xl px-3 py-3'
+    : 'gma-card pointer-events-auto absolute left-1/2 z-40 -translate-x-1/2 rounded-2xl px-4 py-3';
+  const outerStyle: React.CSSProperties = embedded
+    ? {
+        background: 'rgba(15, 23, 42, 0.04)',
+        border: '1px solid var(--gma-border)',
+      }
+    : {
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12rem)',
         width: 'min(420px, calc(100vw - 2rem))',
         boxShadow: 'var(--gma-shadow-md)',
-      }}
+      };
+  return (
+    <div
+      className={outerClass}
+      style={outerStyle}
       aria-label="Simulate time of day"
     >
       <div className="mb-2 flex items-center justify-between">

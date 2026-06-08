@@ -28,7 +28,6 @@ import { DemoButton } from './components/DemoButton';
 import { DemoWatermark } from './components/DemoWatermark';
 import { DemoIntroOverlay } from './components/DemoIntroOverlay';
 import { DemoProgressBar } from './components/DemoProgressBar';
-import { DemoAnnotation } from './components/DemoAnnotation';
 import {
   RouteLegendOverlay,
   RouteLegendButton,
@@ -165,11 +164,13 @@ export default function App() {
 
   // Cinematic chrome state — driven entirely by the demo scheduler.
   // `demoIntroVisible` covers the 2 s opening title card.
-  // `demoAnnotation` is the current voiceover-pill text (null hides).
   // `glarePulsePhase` is the 0→1 sweep for the glare-hotspot pulse.
   // `legendAutoShow` flips on for 4 s when a route first appears.
+  //
+  // Floating annotations were removed in the 2026-06-08 polish pass —
+  // the visual sequence speaks for itself; voiceover-style pills read
+  // as noise on a recording.
   const [demoIntroVisible, setDemoIntroVisible] = useState(false);
-  const [demoAnnotation, setDemoAnnotation] = useState<string | null>(null);
   const [glarePulsePhase, setGlarePulsePhase] = useState(0);
   const glarePulseRafRef = useRef<number | null>(null);
   const demoHourRafRef = useRef<number | null>(null);
@@ -1253,7 +1254,6 @@ export default function App() {
     }
     setDemoLiveCoord(null);
     setGlarePulsePhase(0);
-    setDemoAnnotation(null);
     legendShownForRouteRef.current = null; // force legend to re-show
 
     const schedule = (delayMs: number, fn: () => void) => {
@@ -1295,14 +1295,10 @@ export default function App() {
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
 
-    // ─── t = 5 s : annotation — fastest framing ─────────────────
-    schedule(5_000, () => {
-      setDemoAnnotation('Standard Maps gives you the fastest route');
-    });
-
-    // ─── t = 10 s : annotation + close-in zoom ──────────────────
+    // ─── t = 10 s : zoom in to street level ─────────────────────
+    // Holds at the t=0 zoom-15 framing for the first 10 s so the
+    // route's color palette + auto-shown legend land first.
     schedule(10_000, () => {
-      setDemoAnnotation('GMA shows you how it feels ☀️');
       setViewState({
         longitude: MID_LNG,
         latitude: MID_LAT,
@@ -1314,11 +1310,8 @@ export default function App() {
       } as MapViewState);
     });
 
-    // ─── t = 16 s : zoom into a glare hotspot + pulse ──────────
+    // ─── t = 16 s : glare hotspot close-up + pulse ──────────────
     schedule(16_000, () => {
-      setDemoAnnotation(
-        'Glass glare detected — +15°F on this sidewalk 🔆',
-      );
       setViewState({
         longitude: MID_LNG,
         latitude: MID_LAT,
@@ -1367,35 +1360,27 @@ export default function App() {
       demoHourRafRef.current = requestAnimationFrame(tick);
     });
 
-    // ─── t = 25 s : annotation — cooler path found ──────────────
-    schedule(25_000, () => {
-      setDemoAnnotation('GMA found a cooler path 🌳');
-      setFilterMode('avoid-sun');
-    });
+    // ─── t = 25 s : avoid-sun filter ────────────────────────────
+    // GMA's cooler-path comfort card appears alongside the fastest.
+    schedule(25_000, () => setFilterMode('avoid-sun'));
 
-    // ─── t = 35 s : avoid wind ──────────────────────────────────
-    schedule(35_000, () => {
-      setDemoAnnotation('Wind canyons avoided 🌬️');
-      setFilterMode('avoid-wind');
-    });
+    // ─── t = 35 s : avoid wind — route recolors emerald/violet ─
+    schedule(35_000, () => setFilterMode('avoid-wind'));
 
-    // ─── t = 40 s : sunny spot ──────────────────────────────────
-    schedule(40_000, () => {
-      setDemoAnnotation('Find the sunniest spot ⭐');
-      setFilterMode('sunny-spot');
-    });
+    // ─── t = 40 s : sunny spot — yellow stars overlay ──────────
+    schedule(40_000, () => setFilterMode('sunny-spot'));
 
-    // ─── t = 45 s : Gemini routing intent ───────────────────────
+    // ─── t = 45 s : Gemini routing intent from free-text ───────
     schedule(45_000, () => {
-      setDemoAnnotation('Natural language understood 🤖');
       void handleSubmitPreference('I am walking in a suit');
     });
 
-    // ─── t = 52 s : navigation simulation ───────────────────────
+    // ─── t = 52 s : navigation simulation (6 s walk) ───────────
+    // Shorter than the prior 8 s so the simulated nav ends at
+    // exactly t=58 s — the demo's final-state fly-out begins
+    // immediately after the chevron finishes walking the route,
+    // no awkward "Arrived at destination" beat between them.
     schedule(52_000, () => {
-      setDemoAnnotation(
-        'Navigation begins — follow the comfortable path',
-      );
       if (!selectedRoute) return;
       const polyline = selectedRoute.polyline;
       if (polyline.length < 2) return;
@@ -1411,7 +1396,7 @@ export default function App() {
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
       const startMs = performance.now();
-      const durationMs = 8_000;
+      const durationMs = 6_000;
       const tick = (now: number) => {
         const elapsed = now - startMs;
         const t = Math.min(1, elapsed / durationMs);
@@ -1434,16 +1419,38 @@ export default function App() {
       demoNavRafRef.current = requestAnimationFrame(tick);
     });
 
-    // ─── t = 60 s : done ────────────────────────────────────────
-    schedule(60_000, () => {
+    // ─── t = 58 s : exit nav, fly back to full-route view ──────
+    // Cleanly ends the chevron walk with no "arrived" cue. Fly
+    // back to the route's framing zoom + pitch 30 so the viewer
+    // sees the entire 432 Park → Bryant Park polyline, glare
+    // hotspots, sunny-spot stars, and the route sheet all in
+    // one final composition. Set filterMode to avoid-sun so the
+    // route card shows the cooler-path comfort delta as the
+    // sequence settles.
+    schedule(58_000, () => {
       if (demoNavRafRef.current != null) {
         cancelAnimationFrame(demoNavRafRef.current);
         demoNavRafRef.current = null;
       }
       setDemoLiveCoord(null);
       setNavigating(false);
-      setDemoAnnotation(null);
-      setToastMessage('Demo complete · Tap “Start Demo” to replay');
+      setFilterMode('avoid-sun');
+      setViewState({
+        longitude: MID_LNG,
+        latitude: MID_LAT,
+        zoom: 15,
+        pitch: 30,
+        bearing: 0,
+        transitionDuration: 2_500,
+        transitionInterpolator: new FlyToInterpolator(),
+      } as MapViewState);
+    });
+
+    // ─── t = 60 s : silent end ─────────────────────────────────
+    // No toast, no "Demo complete" message — just settle into
+    // the beautiful full-route view. The Start Demo button
+    // re-appears (demoRunning flips false) for a replay.
+    schedule(60_000, () => {
       setDemoRunning(false);
       demoTimeoutsRef.current = [];
     });
@@ -1853,11 +1860,11 @@ export default function App() {
         />
       )}
 
-      {/* Demo-only time scrubber. Lives just above the SunCompass.
-       * Dragging the slider rewrites `demoHour` → `effectiveTime`
-       * → entire solar / coloring chain recomputes live. */}
+      {/* Floating time scrubber — mobile only. Desktop renders an
+       * embedded copy at the bottom of the sidebar (see below) so the
+       * scrubber doesn't overlap the route on the map. */}
       <TimeScrubber
-        visible={isDemoMode && !navigating}
+        visible={!useSidebar && isDemoMode && !navigating}
         hour={demoHour}
         onChange={setDemoHour}
       />
@@ -1883,7 +1890,6 @@ export default function App() {
        * pill at 70 % viewport height, intro title card. All gated on
        * `?demo=true` so they never render outside demo runs. */}
       <DemoProgressBar active={demoRunning} durationMs={60_000} />
-      <DemoAnnotation text={demoAnnotation} />
       <DemoIntroOverlay visible={demoIntroVisible} />
 
       <MapViewSwitcher
@@ -2023,11 +2029,27 @@ export default function App() {
           dayColor={daylight.color}
           onStart={handleStartNavigation}
         />
+        {/* Embedded desktop time scrubber — sits at the bottom of
+         * the sidebar so it doesn't overlap the route on the map.
+         * Demo-only; visible when ?demo=true. */}
+        {isDemoMode && !navigating && (
+          <div className="mt-auto pt-2">
+            <TimeScrubber
+              visible
+              embedded
+              hour={demoHour}
+              onChange={setDemoHour}
+            />
+          </div>
+        )}
         {/* Sidebar-bottom attribution — replaces the floating chip
          * on desktop so the map area stays clean. Inline (not gma-glass)
          * so it sits flat at the bottom of the sidebar column. */}
         <div
-          className="mt-auto pt-2 text-[10px] leading-snug"
+          className={
+            'pt-2 text-[10px] leading-snug ' +
+            (isDemoMode && !navigating ? '' : 'mt-auto')
+          }
           style={{
             color: 'rgb(71, 85, 105)',
             fontFamily: 'var(--font-data)',
