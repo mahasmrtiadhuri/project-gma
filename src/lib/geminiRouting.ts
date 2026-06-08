@@ -35,6 +35,18 @@ export interface GeminiInterpretation {
    * so the user can see Gemini understood the urgency cue.
    */
   urgency: Urgency;
+  /**
+   * Optional: a place name / address Gemini extracted from the prompt
+   * for the route's starting point (e.g. "One Vanderbilt, New York").
+   * App.tsx forward-geocodes this and calls setOrigin before applying
+   * the routing weights. Null when the user didn't mention an origin.
+   */
+  originQuery: string | null;
+  /**
+   * Optional: same as originQuery but for the destination (e.g.
+   * "Bryant Park, New York"). Null when the user didn't mention one.
+   */
+  destinationQuery: string | null;
 }
 
 /**
@@ -118,6 +130,12 @@ const RESPONSE_SCHEMA = {
       type: 'STRING',
       enum: ['low', 'medium', 'high'],
     },
+    originQuery: {
+      type: 'STRING',
+    },
+    destinationQuery: {
+      type: 'STRING',
+    },
     reasoning: {
       type: 'STRING',
     },
@@ -177,6 +195,15 @@ function buildSystemInstruction(ctx: GeminiContext): string {
     '        - rainPreference: avoid_rain | neutral',
     '        - intensity: low | medium | high  (how strong the preference)',
     '        - urgency: low | medium | high    (how time-pressed the user is)',
+    '        - originQuery: a place name / address from the prompt for the',
+    '          STARTING point (e.g. "I am at One Vanderbilt" => "One Vanderbilt, New York").',
+    '          Look for "I am at", "I\'m at", "starting from", "leaving from",',
+    '          "from <place>". Append ", New York" if the place is a NYC landmark.',
+    '          Set to null when no origin is mentioned.',
+    '        - destinationQuery: a place name / address from the prompt for',
+    '          the DESTINATION (e.g. "need to get to Bryant Park" => "Bryant Park, New York").',
+    '          Look for "to <place>", "going to", "need to get to", "headed to",',
+    '          "meeting at". Set to null when no destination is mentioned.',
     '      And ALWAYS fill `reasoning` with a friendly 1–2 sentence',
     '      summary of WHAT you extracted and HOW the route will be',
     '      optimized (e.g. "Got it — you need shade from the heat, rain',
@@ -323,6 +350,17 @@ function parseGeminiResponse(obj: unknown): GeminiResponse | null {
           o.urgency === 'high' || o.urgency === 'medium' || o.urgency === 'low'
             ? o.urgency
             : 'low',
+        // Origin/destination queries are optional — coerce empty/missing
+        // to null so the chat handler can early-skip the geocode step.
+        originQuery:
+          typeof o.originQuery === 'string' && o.originQuery.trim().length > 0
+            ? o.originQuery.trim()
+            : null,
+        destinationQuery:
+          typeof o.destinationQuery === 'string' &&
+          o.destinationQuery.trim().length > 0
+            ? o.destinationQuery.trim()
+            : null,
       },
       reasoning,
     };

@@ -27,6 +27,15 @@ export interface SearchBarProps {
   onUseCurrentLocation?: () => void;
   /** True while an in-flight geolocation lookup is running — disables the button + swaps the icon for a spinner. */
   locating?: boolean;
+  /**
+   * Bumped by App.tsx whenever the AI chat auto-fills the origin field.
+   * The matching PlaceField pulses amber when the key increments so the
+   * user can see Gemini populating the input. Number rather than boolean
+   * so successive AI submits each retrigger the animation.
+   */
+  originFlashKey?: number;
+  /** Same as originFlashKey but for the destination field. */
+  destinationFlashKey?: number;
 }
 
 const SEARCH_BOUNDS: google.maps.LatLngBoundsLiteral = {
@@ -49,6 +58,8 @@ export function SearchBar({
   onSwap,
   onUseCurrentLocation,
   locating = false,
+  originFlashKey = 0,
+  destinationFlashKey = 0,
 }: SearchBarProps) {
   return (
     <div className="pointer-events-auto w-full">
@@ -76,6 +87,7 @@ export function SearchBar({
               placeholder="Your location"
               ariaLabel="Origin"
               onSelect={onOriginChange}
+              flashKey={originFlashKey}
               trailing={
                 onUseCurrentLocation ? (
                   <button
@@ -103,6 +115,7 @@ export function SearchBar({
               placeholder="Choose destination"
               ariaLabel="Destination"
               onSelect={onDestinationChange}
+              flashKey={destinationFlashKey}
               onClear={
                 destination ? () => onDestinationChange(null) : undefined
               }
@@ -161,6 +174,13 @@ interface PlaceFieldProps {
    * location" crosshair).
    */
   trailing?: React.ReactNode;
+  /**
+   * Counter bumped when the AI auto-fills this field. On each increment
+   * the input pulses amber for ~900 ms so the user can see the field
+   * being populated by Gemini. Skips the initial 0 → first-real-value
+   * transition.
+   */
+  flashKey?: number;
 }
 
 const DEBOUNCE_MS = 200;
@@ -172,6 +192,7 @@ function PlaceField({
   onSelect,
   onClear,
   trailing,
+  flashKey = 0,
 }: PlaceFieldProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const [text, setText] = useState(value);
@@ -179,6 +200,18 @@ function PlaceField({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Mounted-true after the first render so we can skip flashing on
+  // the initial 0 → 0 transition (default flashKey is 0). After mount,
+  // every flashKey change pulses the input for 900 ms.
+  const [flashing, setFlashing] = useState(false);
+  const flashKeyRef = useRef(flashKey);
+  useEffect(() => {
+    if (flashKey === flashKeyRef.current) return; // no change
+    flashKeyRef.current = flashKey;
+    setFlashing(true);
+    const id = window.setTimeout(() => setFlashing(false), 900);
+    return () => window.clearTimeout(id);
+  }, [flashKey]);
   // Keyboard-nav highlight. -1 = nothing highlighted; Enter on -1
   // simply submits the typed text and closes the dropdown. ArrowDown
   // from -1 highlights the first suggestion; ArrowUp from -1 highlights
@@ -395,7 +428,9 @@ function PlaceField({
           // Reserve space for the 44 px clear button OR the trailing
           // accessory (e.g. origin's location crosshair) so long
           // labels don't slide under either.
-          (onClear || trailing ? ' pr-12' : '')
+          (onClear || trailing ? ' pr-12' : '') +
+          // Pulse amber for ~900 ms when AI auto-fills this field.
+          (flashing ? ' gma-flash-amber' : '')
         }
         style={{
           background: 'var(--gma-input-bg)',

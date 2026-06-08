@@ -287,6 +287,31 @@ html.dark .gma-card {
   animation: gma-shimmer 1.4s ease-in-out infinite;
 }
 
+/* AI auto-fill flash — pulses the SearchBar input amber when the chat
+ * handler populates the field from a Gemini-extracted origin or
+ * destination. ~900 ms total: quick amber wash in, slow fade out, with
+ * an outer glow ring so the change reads even on a busy map background. */
+@keyframes gma-amber-flash {
+  0% {
+    background-color: var(--gma-input-bg);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    border-color: var(--gma-input-border);
+  }
+  20% {
+    background-color: rgba(245, 158, 11, 0.28);
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.35);
+    border-color: rgba(245, 158, 11, 0.85);
+  }
+  100% {
+    background-color: var(--gma-input-bg);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    border-color: var(--gma-input-border);
+  }
+}
+.gma-flash-amber {
+  animation: gma-amber-flash 900ms ease-out;
+}
+
 /* Typing-indicator dots — used by the AI chat panel while a Gemini
  * call is in flight. Each dot uses the same animation with a
  * staggered delay so the trio reads as a "thinking" rhythm. */

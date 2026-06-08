@@ -55,6 +55,23 @@ const KNOWN_GLASS_TOWERS = [
   '3 world trade',
   '111 murray',
   'manhattan west',
+  // 2026-06-08: explicitly added per demo spec so the One Vanderbilt
+  // → Bryant Park corridor (the demo route) reliably shows glare
+  // hotspots at 2 PM. The Chrysler / MetLife / Citigroup towers all
+  // sit within 600 m of the route polyline and are well-known glass
+  // facades; classifying them by name avoids relying on the 30 %
+  // probabilistic fallback for untagged moderns.
+  'chrysler',
+  'chrysler building',
+  'metlife',
+  'metlife building',
+  '200 park avenue',
+  'citigroup center',
+  '601 lexington',
+  'one bryant park',
+  'tower 56',
+  'paramount plaza',
+  '300 madison',
 ];
 
 const UNTAGGED_MODERN_GLASS_PROBABILITY = 0.3;

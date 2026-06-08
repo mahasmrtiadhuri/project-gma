@@ -47,7 +47,7 @@ import { useSolarAPI } from './hooks/useSolarAPI';
 import { useLiveLocation } from './hooks/useLiveLocation';
 import { useAnimatedLocation } from './hooks/useAnimatedLocation';
 import { RecenterButton } from './components/RecenterButton';
-import { reverseGeocode } from './lib/geocoding';
+import { reverseGeocode, forwardGeocode } from './lib/geocoding';
 import {
   computeNextTurn,
   computeRouteProgress,
@@ -144,6 +144,14 @@ export default function App() {
   // a filter pill manually (manual choice is implicitly default-intensity).
   const [intensityMultiplier, setIntensityMultiplier] = useState(1.0);
   const [geminiBusy, setGeminiBusy] = useState(false);
+
+  // Flash counters bumped whenever the AI chat auto-fills origin or
+  // destination. SearchBar passes these to the matching PlaceField,
+  // which triggers an amber pulse animation on the input so the user
+  // sees AI populating the field. Numbers (not booleans) so successive
+  // flashes — e.g. demo replay — each retrigger the animation.
+  const [originFlashKey, setOriginFlashKey] = useState(0);
+  const [destinationFlashKey, setDestinationFlashKey] = useState(0);
 
   // Theme toggle — defaults to 'light', persisted to localStorage by
   // the hook. Applies `class="dark"` to <html>, which trips the dark
@@ -1265,8 +1273,52 @@ export default function App() {
             rainPreference: response.interpretation.rainPreference,
             intensity: response.interpretation.intensity,
             urgency: response.interpretation.urgency,
+            originQuery: response.interpretation.originQuery,
+            destinationQuery: response.interpretation.destinationQuery,
             reasoning: response.reasoning,
           });
+
+          // ── Auto-fill origin/destination from Gemini extraction ──
+          // When the prompt names a starting point or destination, the
+          // chat handler geocodes each one and updates the SearchBar
+          // fields BEFORE applying the filter. The route-fetch effect
+          // ([origin, destination, travelMode]) then auto-fires with
+          // the new coords. Flash counters bump so the inputs visibly
+          // pulse amber as they fill.
+          const originPromise = response.interpretation.originQuery
+            ? forwardGeocode(response.interpretation.originQuery, apiKey)
+            : Promise.resolve(null);
+          const destinationPromise = response.interpretation.destinationQuery
+            ? forwardGeocode(response.interpretation.destinationQuery, apiKey)
+            : Promise.resolve(null);
+          const [originResult, destinationResult] = await Promise.all([
+            originPromise,
+            destinationPromise,
+          ]);
+          if (originResult && response.interpretation.originQuery) {
+            setOrigin({
+              point: { lat: originResult.lat, lng: originResult.lng },
+              // Use the Gemini-extracted name as the display label —
+              // Google's `formatted_address` for "One Vanderbilt" is
+              // "1 Vanderbilt Ave, New York, NY 10017, USA" which is
+              // longer and less recognizable than the user's wording.
+              label: response.interpretation.originQuery,
+            });
+            setOriginFlashKey((k) => k + 1);
+            console.log(
+              `[GMA] AI auto-set origin: "${response.interpretation.originQuery}" → (${originResult.lat.toFixed(4)}, ${originResult.lng.toFixed(4)})`,
+            );
+          }
+          if (destinationResult && response.interpretation.destinationQuery) {
+            setDestination({
+              point: { lat: destinationResult.lat, lng: destinationResult.lng },
+              label: response.interpretation.destinationQuery,
+            });
+            setDestinationFlashKey((k) => k + 1);
+            console.log(
+              `[GMA] AI auto-set destination: "${response.interpretation.destinationQuery}" → (${destinationResult.lat.toFixed(4)}, ${destinationResult.lng.toFixed(4)})`,
+            );
+          }
 
           // CRITICAL FIX: React skips re-renders when setState is
           // called with a value equal to the current one (Object.is
@@ -1307,6 +1359,7 @@ export default function App() {
       }
     },
     [
+      apiKey,
       cloudCoverPct,
       effectiveTime,
       nextChatId,
@@ -1316,16 +1369,17 @@ export default function App() {
   );
 
   // ---- Demo Mode scripted sequence ----------------------------------
-  // 45 s scripted walkthrough for the recorded promo video. Activated
-  // by tapping the floating START DEMO button. Each step is scheduled
-  // via setTimeout from t=0; the ref array of timeout IDs lets us
-  // cancel cleanly on unmount. All filter / theme / camera changes
-  // hit the same setters a normal interaction would, so the demo is
-  // a real end-to-end exercise of the app, not a mocked recording.
+  // ~36 s scripted walkthrough for the recorded promo video. The 2026-
+  // 06-08 rebuild reframes the entire demo around ONE PROMPT: the user
+  // sees an empty map + empty search fields, the AI chat opens, a
+  // long contextual prompt types itself, and then origin / destination
+  // / filter / route ALL populate from that single Gemini submission.
+  // Nothing is pre-seeded — every field the viewer sees fill comes
+  // from the chat handler's geocode + setOrigin / setDestination /
+  // setFilterMode pipeline.
   //
-  // Origin = Times Square, destination = Grand Central. Route auto-
-  // fetches from the existing `[origin, destination, travelMode]`
-  // effect — no manual fetchCandidateRoutes call needed.
+  // Solar time is locked to 2 PM throughout so glass-glare hotspots
+  // are always lit regardless of when the demo is recorded.
   const runDemoSequence = useCallback(() => {
     console.log('[GMA] Demo sequence starting');
     setDemoRunning(true);
@@ -1358,38 +1412,33 @@ export default function App() {
       demoTimeoutsRef.current.push(id);
     };
 
-    // ─── Demo route: One Vanderbilt → Bryant Park ──────────────
-    // Shorter (~0.25 mi) than the prior 432 Park route, which was
-    // entirely south-bound on Madison and read as one continuous
-    // orange streak. The west-bound corridor between One Vanderbilt
-    // and Bryant Park exercises every classifier branch in the
-    // visible window: shadow cast by One Vanderbilt's tower
-    // (blue), 42nd-St sunny stretches (orange), Bryant Park's
-    // tree edge (green), and a glass-glare hotspot directly off
-    // the tower's south facade (red).
-    const ORIGIN = { lat: 40.7557, lng: -73.98 };
-    const DESTINATION = { lat: 40.7536, lng: -73.9832 };
-    const MID_LAT = (ORIGIN.lat + DESTINATION.lat) / 2;
-    const MID_LNG = (ORIGIN.lng + DESTINATION.lng) / 2;
+    // Midpoint between One Vanderbilt and Bryant Park — the AI submit
+    // will geocode these, but we frame the camera here ahead of time
+    // so when the route lands the viewer sees it inside the viewport.
+    const FRAME_LAT = 40.75465;
+    const FRAME_LNG = -73.9816;
 
     // ─── Cinematic intro: 2 s white title card ─────────────────
-    // Title fades in over 600 ms, holds, fades out at t=1.6 s so
-    // by t=2 s the map is fully revealed for the rest of the
-    // sequence.
     setDemoIntroVisible(true);
     schedule(1_600, () => setDemoIntroVisible(false));
 
-    // ─── t = 0 s : seed route + reset chrome ────────────────────
-    setOrigin({ point: ORIGIN, label: 'One Vanderbilt' });
-    setDestination({ point: DESTINATION, label: 'Bryant Park' });
+    // ─── t = 0 s : EMPTY start state ─────────────────────────────
+    // No origin, no destination — the AI chat will fill these. Time
+    // locked to 2 PM so glare hotspots are visible the moment the
+    // route appears. Filter starts at 'no-preference' so the user
+    // visibly sees it switch to 'avoid-sun' after Gemini responds.
+    setOrigin(null);
+    setDestination(null);
     setMapView('2d');
-    setTheme('light'); // light mode for the entire demo
+    setTheme('light');
     setTimeMode('leave-now');
     setPlannedTime(null);
     setFilterMode('no-preference');
+    setIntensityMultiplier(1.0);
+    setDemoHour(14); // 2 PM solar lock — keeps glare on
     setViewState({
-      longitude: MID_LNG,
-      latitude: MID_LAT,
+      longitude: FRAME_LNG,
+      latitude: FRAME_LAT,
       zoom: 15,
       pitch: 30,
       bearing: 0,
@@ -1397,111 +1446,38 @@ export default function App() {
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
 
-    // ─── t = 10 s : zoom in to street level ─────────────────────
-    // Holds at the t=0 zoom-15 framing for the first 10 s so the
-    // route's color palette + auto-shown legend land first.
-    schedule(10_000, () => {
-      setViewState({
-        longitude: MID_LNG,
-        latitude: MID_LAT,
-        zoom: 17,
-        pitch: 30,
-        bearing: 0,
-        transitionDuration: 2_500,
-        transitionInterpolator: new FlyToInterpolator(),
-      } as MapViewState);
-    });
-
-    // ─── t = 16 s : glare hotspot close-up + pulse ──────────────
-    schedule(16_000, () => {
-      setViewState({
-        longitude: MID_LNG,
-        latitude: MID_LAT,
-        zoom: 18,
-        pitch: 45,
-        bearing: 25,
-        transitionDuration: 2_500,
-        transitionInterpolator: new FlyToInterpolator(),
-      } as MapViewState);
-      // Pulse the glare-hotspot dots: scale 1 → ~1.4 → 1 over
-      // 600 ms via `glarePulsePhase` 0 → 1 → 0. Driven by rAF so
-      // it tracks frames cleanly.
-      const pulseStart = performance.now();
-      const pulseDuration = 600;
-      const pulseTick = (now: number) => {
-        const t = Math.min(1, (now - pulseStart) / pulseDuration);
-        setGlarePulsePhase(t);
-        if (t < 1) {
-          glarePulseRafRef.current = requestAnimationFrame(pulseTick);
-        } else {
-          glarePulseRafRef.current = null;
-          // Settle back to baseline.
-          window.setTimeout(() => setGlarePulsePhase(0), 50);
-        }
-      };
-      glarePulseRafRef.current = requestAnimationFrame(pulseTick);
-    });
-
-    // ─── t = 20 s : auto-animate time scrubber 8 → 14 over 4 s ─
-    // Slider thumb visibly traverses the 6-AM-to-10-PM track while
-    // the entire route polyline + glare hotspots recompute live as
-    // the sun angle shifts toward midday.
-    schedule(20_000, () => {
-      const startMs = performance.now();
-      const duration = 4_000;
-      const fromHour = 8;
-      const toHour = 14;
-      setDemoHour(fromHour);
-      const tick = (now: number) => {
-        const t = Math.min(1, (now - startMs) / duration);
-        const hour = fromHour + (toHour - fromHour) * t;
-        setDemoHour(Math.round(hour));
-        if (t < 1) {
-          demoHourRafRef.current = requestAnimationFrame(tick);
-        } else {
-          demoHourRafRef.current = null;
-        }
-      };
-      demoHourRafRef.current = requestAnimationFrame(tick);
-    });
-
-    // ─── t = 25 s : avoid-sun filter ────────────────────────────
-    // GMA's cooler-path comfort card appears alongside the fastest.
-    schedule(25_000, () => setFilterMode('avoid-sun'));
-
-    // ─── t = 30 s : avoid wind — route recolors emerald/violet ─
-    schedule(30_000, () => setFilterMode('avoid-wind'));
-
-    // ─── t = 35 s : sunny spot — yellow stars overlay ──────────
-    schedule(35_000, () => setFilterMode('sunny-spot'));
-
-    // ─── t = 46 s : AI chat panel — open + typewriter + submit ─
-    // Opens the dark-glass chat panel, types the prompt character
-    // by character (50 ms/char) into its textarea via the
-    // overrideText prop, submits to Gemini, lets the reply land
-    // in the history as a bubble, then closes the panel ~5 s
-    // later so the demo can proceed to the navigation simulation
-    // at t=52. Clear the chat history at the start so previous
-    // demo runs don't bleed in.
-    schedule(46_000, () => {
+    // ─── t = 5 s : AI chat panel opens ──────────────────────────
+    schedule(5_000, () => {
       setChatMessages([]);
       setChatOpen(true);
-      const fullText = "It's hot outside, keep me in the shade";
-      // Start typing 400 ms after the panel slides up so the viewer
-      // sees the empty chat surface settle first.
-      const TYPE_START = 400;
+    });
+
+    // ─── t = 8 s : typewriter the full contextual prompt ────────
+    // Single prompt that exercises every extraction field — origin,
+    // destination, sun preference, intensity, urgency, body context.
+    // 30 ms/char so the full ~170-char prompt finishes in ~5 s.
+    schedule(8_000, () => {
+      const fullText =
+        'I am at One Vanderbilt and running late to an executive ' +
+        'presentation in a heavy wool suit. I need to get to Bryant ' +
+        'Park. I am already overheating. Optimize my path.';
+      const CHAR_INTERVAL = 30; // ms
+      const TYPE_START = 200; // small lead-in before the first keystroke lands
       setDemoTypewriterText('');
       for (let i = 1; i <= fullText.length; i++) {
         const id = window.setTimeout(() => {
           setDemoTypewriterText(fullText.slice(0, i));
-        }, TYPE_START + i * 50);
+        }, TYPE_START + i * CHAR_INTERVAL);
         demoTimeoutsRef.current.push(id);
       }
-      const submitDelay = TYPE_START + fullText.length * 50 + 150;
+      // Auto-submit ~250 ms after typing completes — that brief pause
+      // sells "the AI is reading what it typed" to the viewer.
+      const submitDelay = TYPE_START + fullText.length * CHAR_INTERVAL + 250;
       const submitId = window.setTimeout(() => {
         void handleSubmitPreference(fullText);
-        // Release the override so the chat input goes back to the
-        // user's own state once the demo step is complete.
+        // Release the typewriter override so future user input would
+        // be free-form, but keep the panel open so the AI reply bubble
+        // can land visibly.
         const releaseId = window.setTimeout(
           () => setDemoTypewriterText(null),
           300,
@@ -1511,17 +1487,54 @@ export default function App() {
       demoTimeoutsRef.current.push(submitId);
     });
 
-    // ─── t = 51 s : close the chat panel ────────────────────────
-    // Gives the Gemini reasoning bubble time to land before the
-    // panel slides away. Nav sim takes over at t=52.
-    schedule(51_000, () => setChatOpen(false));
+    // ─── t ≈ 17 s : close chat after Gemini reply lands ─────────
+    // Gemini call + forward-geocode of two queries takes ~2 s. By
+    // t=17s the origin/destination fields have flashed amber, the
+    // route has been fetched + scored, and the AI's reasoning bubble
+    // is on-screen long enough to read.
+    schedule(17_000, () => setChatOpen(false));
 
-    // ─── t = 52 s : navigation simulation (6 s walk) ───────────
-    // Shorter than the prior 8 s so the simulated nav ends at
-    // exactly t=58 s — the demo's final-state fly-out begins
-    // immediately after the chevron finishes walking the route,
-    // no awkward "Arrived at destination" beat between them.
-    schedule(52_000, () => {
+    // ─── t = 19 s : zoom in to street level to reveal the route ─
+    schedule(19_000, () => {
+      setViewState({
+        longitude: FRAME_LNG,
+        latitude: FRAME_LAT,
+        zoom: 17,
+        pitch: 30,
+        bearing: 0,
+        transitionDuration: 2_500,
+        transitionInterpolator: new FlyToInterpolator(),
+      } as MapViewState);
+    });
+
+    // ─── t = 23 s : glare hotspot close-up + pulse ──────────────
+    schedule(23_000, () => {
+      setViewState({
+        longitude: FRAME_LNG,
+        latitude: FRAME_LAT,
+        zoom: 18,
+        pitch: 45,
+        bearing: 25,
+        transitionDuration: 2_500,
+        transitionInterpolator: new FlyToInterpolator(),
+      } as MapViewState);
+      const pulseStart = performance.now();
+      const pulseDuration = 600;
+      const pulseTick = (now: number) => {
+        const t = Math.min(1, (now - pulseStart) / pulseDuration);
+        setGlarePulsePhase(t);
+        if (t < 1) {
+          glarePulseRafRef.current = requestAnimationFrame(pulseTick);
+        } else {
+          glarePulseRafRef.current = null;
+          window.setTimeout(() => setGlarePulsePhase(0), 50);
+        }
+      };
+      glarePulseRafRef.current = requestAnimationFrame(pulseTick);
+    });
+
+    // ─── t = 28 s : navigation simulation (6 s walk) ────────────
+    schedule(28_000, () => {
       if (!selectedRoute) return;
       const polyline = selectedRoute.polyline;
       if (polyline.length < 2) return;
@@ -1560,25 +1573,17 @@ export default function App() {
       demoNavRafRef.current = requestAnimationFrame(tick);
     });
 
-    // ─── t = 58 s : exit nav, fly back to full-route view ──────
-    // Cleanly ends the chevron walk with no "arrived" cue. Fly
-    // back to the route's framing zoom + pitch 30 so the viewer
-    // sees the entire 432 Park → Bryant Park polyline, glare
-    // hotspots, sunny-spot stars, and the route sheet all in
-    // one final composition. Set filterMode to avoid-sun so the
-    // route card shows the cooler-path comfort delta as the
-    // sequence settles.
-    schedule(58_000, () => {
+    // ─── t = 34 s : exit nav, fly back to full-route view ───────
+    schedule(34_000, () => {
       if (demoNavRafRef.current != null) {
         cancelAnimationFrame(demoNavRafRef.current);
         demoNavRafRef.current = null;
       }
       setDemoLiveCoord(null);
       setNavigating(false);
-      setFilterMode('avoid-sun');
       setViewState({
-        longitude: MID_LNG,
-        latitude: MID_LAT,
+        longitude: FRAME_LNG,
+        latitude: FRAME_LAT,
         zoom: 15,
         pitch: 30,
         bearing: 0,
@@ -1587,11 +1592,8 @@ export default function App() {
       } as MapViewState);
     });
 
-    // ─── t = 60 s : silent end ─────────────────────────────────
-    // No toast, no "Demo complete" message — just settle into
-    // the beautiful full-route view. The Start Demo button
-    // re-appears (demoRunning flips false) for a replay.
-    schedule(60_000, () => {
+    // ─── t = 36 s : silent end ─────────────────────────────────
+    schedule(36_000, () => {
       setDemoRunning(false);
       demoTimeoutsRef.current = [];
     });
@@ -1895,6 +1897,8 @@ export default function App() {
               onSwap={handleSwap}
               onUseCurrentLocation={handleUseCurrentLocation}
               locating={locatingOrigin}
+              originFlashKey={originFlashKey}
+              destinationFlashKey={destinationFlashKey}
             />
           </div>
           {sheetOpen && (
@@ -2139,6 +2143,8 @@ export default function App() {
           onSwap={handleSwap}
           onUseCurrentLocation={handleUseCurrentLocation}
           locating={locatingOrigin}
+          originFlashKey={originFlashKey}
+          destinationFlashKey={destinationFlashKey}
         />
         {sheetOpen && (
           <TransportModeSwitcher

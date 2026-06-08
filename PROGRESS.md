@@ -4349,3 +4349,103 @@ The polyline visibly recolors (briefly to no-preference, then to avoid-sun color
 ### Build status
 - `npx tsc -b` clean
 - `npx vite build` clean (existing >500 kB chunk advisory only)
+
+---
+
+## 2026-06-08 — Major: full prompt-to-route pipeline (single prompt sets everything)
+
+Headline upgrade: the AI chat panel now extracts origin, destination, AND routing preferences from a single free-text prompt. The user no longer types into the search fields — Gemini extracts location names, the chat handler forward-geocodes them, both SearchBar fields visibly fill (amber flash animation), the route auto-fetches, and the AI-mapped filter applies. One sentence drives the entire experience.
+
+### 1. Forward geocoding ([src/lib/geocoding.ts](src/lib/geocoding.ts))
+
+New `forwardGeocode(query, apiKey)` returning `{ lat, lng, formattedAddress } | null`. Same fallback chain as the existing `reverseGeocode` (Google first → Nominatim). NYC viewport bias (`bounds=40.7,-74.02|40.8,-73.93`, `region=us`) so "Bryant Park" resolves to the Manhattan one. Appends `", New York"` to the query when the input doesn't already mention NYC, so single-word landmarks like "One Vanderbilt" disambiguate cleanly.
+
+### 2. Gemini schema + system prompt + parser ([src/lib/geminiRouting.ts](src/lib/geminiRouting.ts))
+
+- `GeminiInterpretation` gains two optional fields: `originQuery: string | null`, `destinationQuery: string | null`.
+- `RESPONSE_SCHEMA` declares both as `STRING` fields.
+- `parseGeminiResponse` coerces empty/missing strings to `null` so the chat handler can early-skip the geocode step.
+- System prompt updated with explicit extraction rules:
+  - **originQuery:** look for "I am at", "I'm at", "starting from", "leaving from", "from <place>". Append `, New York` for NYC landmarks. Null when not mentioned.
+  - **destinationQuery:** look for "to <place>", "going to", "need to get to", "headed to", "meeting at". Null when not mentioned.
+
+### 3. Chat handler auto-fills origin + destination ([src/App.tsx](src/App.tsx) `handleSubmitPreference`)
+
+Before applying the filter:
+
+```ts
+const [originResult, destinationResult] = await Promise.all([
+  originQuery ? forwardGeocode(originQuery, apiKey) : null,
+  destinationQuery ? forwardGeocode(destinationQuery, apiKey) : null,
+]);
+if (originResult && originQuery) {
+  setOrigin({ point: { lat, lng }, label: originQuery });
+  setOriginFlashKey((k) => k + 1);
+}
+if (destinationResult && destinationQuery) {
+  setDestination({ point: { lat, lng }, label: destinationQuery });
+  setDestinationFlashKey((k) => k + 1);
+}
+```
+
+The existing `[origin, destination, travelMode]` effect picks up the new pair and fires the Routes API call automatically. The 100 ms filter-reset dance from the prior session still runs afterward, so `avoid-sun` lands on the now-loaded routes.
+
+Uses the Gemini-extracted query as the display label (e.g. "One Vanderbilt") rather than Google's `formatted_address` ("1 Vanderbilt Ave, New York, NY 10017, USA") which is longer and less recognizable.
+
+### 4. Amber flash animation on auto-filled inputs
+
+- **[src/styles/globals.css](src/styles/globals.css)** — new `@keyframes gma-amber-flash` (900 ms): background washes amber, 4-px amber outer ring grows, border-color → amber-500, then everything fades back to the input baseline. `.gma-flash-amber` class applies the animation.
+- **[src/components/SearchBar.tsx](src/components/SearchBar.tsx)** — `SearchBar` gains `originFlashKey?: number` + `destinationFlashKey?: number` props, forwarded to each `PlaceField` as `flashKey`. `PlaceField` watches `flashKey` with a `useRef`-guarded `useEffect` so the initial mount (key `0` → `0`) doesn't flash; every subsequent change sets `flashing=true` for 900 ms, applying `.gma-flash-amber` to the `<input>`.
+- **[src/App.tsx](src/App.tsx)** — both `<SearchBar />` mounts (mobile floating bar + desktop sidebar) wired with `originFlashKey={originFlashKey}` + `destinationFlashKey={destinationFlashKey}`.
+
+### 5. Demo sequence rebuilt around the one-prompt story ([src/App.tsx](src/App.tsx) `runDemoSequence`)
+
+Old demo was 60 s of filter cycling + time scrubbing — features that are now driven by the AI. Replaced with a focused ~36 s "watch one prompt do everything" sequence:
+
+| t | Event |
+|---|---|
+| 0 s | Empty fields. Map framed mid-route. Time locked to 2 PM (`setDemoHour(14)`). Filter `no-preference`. |
+| 1.6 s | Intro card fades. |
+| 5 s | AI chat panel opens. |
+| 8 s | Typewriter begins (30 ms/char) typing the full ~170-char contextual prompt: *"I am at One Vanderbilt and running late to an executive presentation in a heavy wool suit. I need to get to Bryant Park. I am already overheating. Optimize my path."* |
+| ~13.5 s | Typewriter finishes, auto-submit fires. |
+| ~14–16 s | Gemini returns → forward-geocode of both queries → SearchBar fields flash amber → route fetches → `avoid-sun` filter applies → GMA Pick card surfaces. ALL from the one prompt. |
+| 17 s | Chat panel closes (AI reasoning bubble has been on-screen long enough to read). |
+| 19 s | Camera zooms in to street level (zoom 17). |
+| 23 s | Camera tilts to glare-hotspot close-up + 600 ms pulse animation. |
+| 28 s | Navigation simulation (6 s walk along the route). |
+| 34 s | Fly back to full-route framing. |
+| 36 s | Silent end, Start Demo button reappears. |
+
+### 6. Solar time locked to 2 PM in demo mode
+
+`setDemoHour(14)` is set at `t=0` and never animated again. The existing `effectiveTime` memo already clamps to `today @ demoHour:00` when `isDemoModeForTime` is true, so this single setter guarantees the entire demo runs under 2 PM solar geometry — glass-glare hotspots stay lit regardless of when the demo is recorded. The prior 8 → 14 hour-scrubber animation was removed.
+
+### 7. Glass tower list expanded ([src/lib/glassGlare.ts](src/lib/glassGlare.ts))
+
+Added to `KNOWN_GLASS_TOWERS` (all lowercase, partial OSM-name match): `chrysler`, `chrysler building`, `metlife`, `metlife building`, `200 park avenue`, `citigroup center`, `601 lexington`, `one bryant park`, `tower 56`, `paramount plaza`, `300 madison`. All sit within ~600 m of the One Vanderbilt → Bryant Park corridor and have well-known glass facades — classifying them by name avoids relying on the 30 % probabilistic fallback for untagged modern buildings.
+
+### Build status
+
+- `npx tsc -b` clean
+- `npx vite build` clean (only the existing >500 kB chunk advisory)
+
+### Test plan
+
+Manual verification of the chat-driven pipeline:
+
+1. Open the app (skip the demo). Search fields are empty.
+2. Open the AI chat panel.
+3. Type: *"I am at One Vanderbilt and running late to an executive presentation in a heavy wool suit. I need to get to Bryant Park. I am already overheating. Optimize my path."*
+4. Expect console output:
+   ```
+   [GMA] Gemini raw response: { mode: 'routing', sunPreference: 'avoid_sun', intensity: 'high', urgency: 'high', originQuery: 'One Vanderbilt, New York', destinationQuery: 'Bryant Park, New York', reasoning: '…' }
+   [GMA] Google forward-geocoding "One Vanderbilt, New York"…
+   [GMA] Google forward-geocoding "Bryant Park, New York"…
+   [GMA] AI auto-set origin: "One Vanderbilt, New York" → (40.755…, -73.979…)
+   [GMA] AI auto-set destination: "Bryant Park, New York" → (40.753…, -73.983…)
+   [GMA] Filter applied: avoid-sun intensity: 1.5
+   [GMA] Routes re-ranked: route 0 score …, route 1 score …
+   ```
+5. SearchBar inputs visibly fill with "One Vanderbilt, New York" and "Bryant Park, New York", both pulsing amber for ~900 ms.
+6. Route appears on the map, scored avoid-sun, GMA Pick card surfaces.
