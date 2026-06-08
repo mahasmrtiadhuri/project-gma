@@ -991,6 +991,18 @@ export default function App() {
     }
   }, [result]);
 
+  // Diagnostic: log route scores whenever the ranking changes. This is
+  // the third of the three verification log lines spec'd for the AI
+  // chat → route update flow — it confirms `scoreAndRankRoutes` is
+  // actually re-running with the new weights after a Gemini submit.
+  useEffect(() => {
+    if (!result || result.routes.length === 0) return;
+    const scoreSummary = result.routes
+      .map((r, i) => `route ${i} score ${r.hlciCost.toFixed(3)}`)
+      .join(', ');
+    console.log(`[GMA] Routes re-ranked: ${scoreSummary}`);
+  }, [result]);
+
   // Diagnostic: surface the actual polyline shape when the user picks a
   // route. A real Routes API walking polyline is 50–200 points; 2 points
   // means we fell back to the straight-line fixture in hlciRouter.
@@ -1244,31 +1256,45 @@ export default function App() {
         }
         if (response.mode === 'routing') {
           const mapped = mapInterpretation(response.interpretation);
-          // Debug: trace the Gemini → filter-mode pipeline. If
-          // `filterMode` doesn't visibly change in the UI after this
-          // log fires, the bug is downstream of the setters (result
-          // memo, route re-ranking, or coloring) rather than in this
-          // handler.
-          console.log('[GMA] Gemini routing intent', {
-            input: text,
-            interpretation: response.interpretation,
-            mappedFilterMode: mapped.filterMode,
-            mappedIntensityMultiplier: mapped.intensityMultiplier,
+          // The Gemini raw response — exact shape the user asked for
+          // in the verification log spec.
+          console.log('[GMA] Gemini raw response:', {
+            mode: 'routing',
+            sunPreference: response.interpretation.sunPreference,
+            windPreference: response.interpretation.windPreference,
+            rainPreference: response.interpretation.rainPreference,
+            intensity: response.interpretation.intensity,
+            urgency: response.interpretation.urgency,
             reasoning: response.reasoning,
           });
-          console.log(
-            `[GMA] setFilterMode(${mapped.filterMode}) + setIntensityMultiplier(${mapped.intensityMultiplier})`,
-          );
-          setFilterMode(mapped.filterMode);
-          setIntensityMultiplier(mapped.intensityMultiplier);
+
+          // CRITICAL FIX: React skips re-renders when setState is
+          // called with a value equal to the current one (Object.is
+          // equality). The default filterMode is 'avoid-sun', so
+          // when a user types "I'm overheating" → Gemini returns
+          // avoid_sun → setFilterMode('avoid-sun') is a no-op and
+          // the route looks unchanged. Force a visible re-render by
+          // dropping to 'no-preference' first, letting React commit
+          // that frame, then applying the real filter 100 ms later.
+          // Same trick for intensityMultiplier.
+          setFilterMode('no-preference');
+          setIntensityMultiplier(1.0);
+          window.setTimeout(() => {
+            setFilterMode(mapped.filterMode);
+            setIntensityMultiplier(mapped.intensityMultiplier);
+            console.log(
+              `[GMA] Filter applied: ${mapped.filterMode} intensity: ${mapped.intensityMultiplier}`,
+            );
+          }, 100);
+
           setChatMessages((prev) => [
             ...prev,
             { id: nextChatId(), role: 'ai', text: response.reasoning },
           ]);
           return;
         }
-        console.log('[GMA] Gemini QA intent (route unchanged)', {
-          input: text,
+        console.log('[GMA] Gemini raw response:', {
+          mode: 'qa',
           answer: response.answer,
         });
         // QA intent.

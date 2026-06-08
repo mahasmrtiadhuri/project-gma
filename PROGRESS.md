@@ -4280,3 +4280,72 @@ Kept the slate-700 palette + DM-Mono "Legend" header + four entries (glare hotsp
 ### Build status
 - `npx tsc -b` clean
 - `npx vite build` clean (only the existing >500 kB chunk advisory)
+
+---
+
+## 2026-06-08 — Root-cause fix: AI chat → route now visibly updates
+
+### Diagnosis
+
+Previous session added diagnostic logs but the route still didn't visibly update. Re-audited and found the actual bug: **React skips re-renders when `setState` is called with the same value (`Object.is` equality)**.
+
+The default `filterMode` is `'avoid-sun'` ([App.tsx](src/App.tsx) state init). The most common Gemini routing output for prompts like *"I'm overheating"* or *"keep me in the shade"* is `sunPreference: 'avoid_sun'` → `mapInterpretation` → `filterMode: 'avoid-sun'`. Calling `setFilterMode('avoid-sun')` when the current value is already `'avoid-sun'` is a no-op — React commits nothing, the `result` memo never re-runs, the polyline keeps its previous coloring, and the user sees no change.
+
+Same story for `intensityMultiplier`: stays at 1.0 by default, Gemini returns `intensity: 'medium'` → multiplier 1.0 → no-op.
+
+### Fix 1: Force a visible state transition ([src/App.tsx](src/App.tsx) `handleSubmitPreference`)
+
+In the routing branch, drop `filterMode` to `'no-preference'` and `intensityMultiplier` to `1.0` immediately, then re-apply the real Gemini-mapped values 100 ms later via `setTimeout`. The intermediate frame guarantees React commits a state transition even when the final filter equals the prior one.
+
+```ts
+setFilterMode('no-preference');
+setIntensityMultiplier(1.0);
+window.setTimeout(() => {
+  setFilterMode(mapped.filterMode);
+  setIntensityMultiplier(mapped.intensityMultiplier);
+  console.log(`[GMA] Filter applied: ${mapped.filterMode} intensity: ${mapped.intensityMultiplier}`);
+}, 100);
+```
+
+Side-effect chain that now fires reliably on every submit:
+1. `setFilterMode('no-preference')` → `useEffect` resets `selectedRouteIdx`, `result` memo recomputes with no-pref weights, `coloringMode` flips to `'sun'`, `coloredSegments` repaints.
+2. 100 ms later, the real filter re-applies → another full re-render cycle → user sees the polyline visibly recolor.
+
+### Fix 2: Strengthen Gemini system prompt ([src/lib/geminiRouting.ts](src/lib/geminiRouting.ts))
+
+Hardened the mode-classifier to default to `routing` for any physical-context or comfort-preference input. New rules:
+
+- **Routing trigger keywords:** clothing, body state, weather sensitivity, action verbs (walking, cycling, going to), destination references, or any of `shade / sun / cool / hot / wind / rain / shelter / route me / take me / find me`.
+- **Explicit example:** *"I am overheating in a wool suit, route me through shade"* now appears in the prompt's routing-mode example list.
+- **QA mode narrowed** to PURE questions only ("what is the weather like?", "is it sunny right now?"). Mixed inputs ("it is hot, should I bring a hat?") explicitly told to prefer `routing`.
+
+### Fix 3: Verification log spec ([src/App.tsx](src/App.tsx))
+
+All three log lines the user spec'd now emit on every submit:
+
+```text
+[GMA] Gemini raw response: {mode: 'routing', sunPreference: 'avoid_sun', intensity: 'high', reasoning: '…'}
+[GMA] Filter applied: avoid-sun intensity: 1.5
+[GMA] Routes re-ranked: route 0 score 0.234, route 1 score 0.412
+```
+
+- Line 1 — emitted in `handleSubmitPreference` right after the Gemini response parses.
+- Line 2 — emitted inside the 100 ms `setTimeout` after `setFilterMode` + `setIntensityMultiplier` fire.
+- Line 3 — new `useEffect` watching `result.routes`, joins `route N score X.XXX` for every ranked candidate; runs on every `result` change.
+
+### Verification (manual)
+
+Test setup per spec: Origin = One Vanderbilt (40.7557, −73.9800), Destination = Bryant Park (40.7536, −73.9832), planned time tomorrow 2 PM. Type *"I am overheating in a wool suit, route me through shade"* into the AI chat.
+
+Expected console output:
+```
+[GMA] Gemini raw response: {mode: 'routing', sunPreference: 'avoid_sun', windPreference: 'neutral', rainPreference: 'neutral', intensity: 'high', urgency: 'low', reasoning: '…'}
+[GMA] Filter applied: avoid-sun intensity: 1.5
+[GMA] Routes re-ranked: route 0 score 0.XXX, route 1 score 0.XXX
+```
+
+The polyline visibly recolors (briefly to no-preference, then to avoid-sun coloring) and the selected route swaps to the new top-ranked one.
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (existing >500 kB chunk advisory only)
