@@ -176,11 +176,11 @@ const CONDITION_LABEL: Record<RouteCondition, string> = {
 const CONDITION_COLOR: Record<RouteCondition, string> = {
   'mostly-sunny': 'rgb(234, 88, 12)', //   amber-orange — uncomfortable
   'partly-shaded': 'rgb(180, 130, 20)', // muted gold
-  'mostly-shaded': 'rgb(30, 120, 60)', //  green — comfortable
+  'mostly-shaded': 'rgb(5, 150, 105)', //  green — comfortable
   'glare-detected': 'rgb(220, 38, 38)', // red-600 — danger
   'strong-headwind': 'rgb(168, 85, 247)', // violet-500 — windy
   'moderate-wind': 'rgb(180, 130, 20)', //  muted gold — middle
-  sheltered: 'rgb(30, 120, 60)', //         green — comfortable
+  sheltered: 'rgb(5, 150, 105)', //         green — comfortable
   'rain-exposed': 'rgb(71, 85, 105)', //    slate-600 — wet
   'rain-sheltered': 'rgb(6, 182, 212)', //  cyan-500 — dry
   'snow-exposed': 'rgb(30, 58, 138)', //    blue-900 — frosty
@@ -356,15 +356,18 @@ export function RouteSheet({
         <InlineRouteLegend mode={legendMode} snow={legendSnow} />
       )}
 
-      {/* On mobile, `pr-16` reserves space for the close button on the
-       * right edge. In embedded sidebar mode there's no close button,
-       * so symmetric `px-4` is fine. */}
-      <div
-        className={
-          'flex shrink-0 gap-1.5 overflow-x-auto pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] ' +
-          (embedded ? 'px-4' : 'pl-4 pr-16')
-        }
-      >
+      {/* Filter pill row wrapper — `relative` to anchor the
+       * right-edge gradient fade that hints at horizontal
+       * overflow. The fade pseudo-element is rendered as a
+       * sibling absolute div so it doesn't intercept taps on
+       * the pills underneath. */}
+      <div className="relative shrink-0">
+        <div
+          className={
+            'flex gap-1.5 overflow-x-auto pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] ' +
+            (embedded ? 'px-4' : 'pl-4 pr-16')
+          }
+        >
         {visibleFilters.map((mode) => {
           const meta = FILTER_META[mode];
           const active = mode === filterMode;
@@ -407,6 +410,18 @@ export function RouteSheet({
             </button>
           );
         })}
+        </div>
+        {/* Right-edge gradient fade — pointer-events-none so taps
+         * pass through to the pills underneath. Hints that the
+         * row scrolls when there are more pills than fit. */}
+        <div
+          className="pointer-events-none absolute bottom-0 right-0 top-0 w-10"
+          style={{
+            background:
+              'linear-gradient(to right, color-mix(in srgb, var(--gma-surface) 0%, transparent) 0%, var(--gma-surface) 100%)',
+          }}
+          aria-hidden="true"
+        />
       </div>
 
       <form
@@ -560,7 +575,7 @@ export function RouteSheet({
                     <p
                       className="px-2 py-1 text-center text-xs"
                       style={{
-                        color: 'rgb(30, 120, 60)',
+                        color: 'rgb(5, 150, 105)',
                         fontFamily: 'var(--font-data)',
                       }}
                     >
@@ -900,11 +915,11 @@ function comfortBadgeFor(
   // Wind filter — show mph avoided / wind state.
   if (filterMode === 'avoid-wind') {
     if (windSpeedMph < 3) {
-      return { text: 'Calm', color: 'rgb(30, 120, 60)' };
+      return { text: 'Calm', color: 'rgb(5, 150, 105)' };
     }
     const exposure = route.meanWindExposure ?? 0;
     if (exposure < 0.3) {
-      return { text: 'Wind sheltered', color: 'rgb(30, 120, 60)' };
+      return { text: 'Wind sheltered', color: 'rgb(5, 150, 105)' };
     }
     const mph = Math.round(exposure * windSpeedMph);
     return {
@@ -974,7 +989,7 @@ function comfortBadgeFor(
   }
   return {
     text: `~${Math.abs(cooler)}°F cooler`,
-    color: 'rgb(30, 120, 60)',
+    color: 'rgb(5, 150, 105)',
   };
 }
 
@@ -1284,9 +1299,12 @@ function SegmentBreakdownBar({ breakdown }: { breakdown: SegmentBreakdown }) {
         )}
       </div>
       <div
-        className="mt-1 text-[10px]"
+        className="mt-1 text-[11px] font-medium"
         style={{
-          color: 'var(--gma-text-secondary)',
+          // slate-600 instead of the lighter secondary token so
+          // the percentages stay legible on the gradient card
+          // background and at small font size.
+          color: 'rgb(71, 85, 105)',
           fontFamily: 'var(--font-data)',
         }}
       >

@@ -128,7 +128,13 @@ function SearchRow({
   field: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 pr-14">
+    <div className="flex min-h-[48px] items-center gap-3 pr-14">
+      {/* Fixed 16 px square with flex centering so the dot inside
+       * always reads as vertically aligned with the input's optical
+       * center regardless of which dot variant (animated origin
+       * halo vs solid destination) is rendered. `self-center` on
+       * the outer column would defer to flex-item baseline; an
+       * explicit equal-height container is more reliable. */}
       <div className="flex h-4 w-4 shrink-0 items-center justify-center">
         {icon}
       </div>

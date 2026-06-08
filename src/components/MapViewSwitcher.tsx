@@ -16,6 +16,13 @@ export interface MapViewSwitcherProps {
    * area) so the two never overlap.
    */
   navigating?: boolean;
+  /**
+   * Desktop sidebar layout: stack the switcher at the top-right of
+   * the map area, just below the ThemeToggle, so the two form a
+   * single vertical toolbar. When false the prior bottom-right
+   * dynamic positioning takes over.
+   */
+  stackedTopRight?: boolean;
 }
 
 const OPTIONS: ReadonlyArray<{ key: MapView; label: string }> = [
@@ -33,7 +40,51 @@ export function MapViewSwitcher({
   onChange,
   routeSheetOpen = false,
   navigating = false,
+  stackedTopRight = false,
 }: MapViewSwitcherProps) {
+  // Desktop sidebar mode: pin to top-right just below the ThemeToggle.
+  // ThemeToggle is at top: env+1rem, h-11 (44 px), so we sit at
+  // env+1rem + 44 + 8 ≈ env+4rem.
+  if (stackedTopRight) {
+    return (
+      <div
+        className="gma-card pointer-events-auto absolute right-4 z-40 flex flex-col gap-1 rounded-xl p-1"
+        style={{
+          top: 'calc(env(safe-area-inset-top, 0px) + 4rem)',
+        }}
+        role="radiogroup"
+        aria-label="Map view"
+      >
+        {OPTIONS.map((opt) => {
+          const active = value === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(opt.key)}
+              className="gma-press flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg px-3 text-xs uppercase tracking-wider"
+              style={
+                active
+                  ? {
+                      background: 'var(--gma-press-bg)',
+                      color: 'var(--gma-text-primary)',
+                    }
+                  : {
+                      background: 'transparent',
+                      color: 'var(--gma-text-secondary)',
+                    }
+              }
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   // Dynamic bottom offset so the switcher never collides with the
   // bottom sheet or the navigation next-turn pill. Order matters —
   // nav takes precedence over sheet-open since they don't co-occur.

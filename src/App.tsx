@@ -85,7 +85,10 @@ const INITIAL_VIEW_STATE: MapViewState = {
   longitude: NYC_CENTER.lng,
   latitude: NYC_CENTER.lat,
   zoom: 14,
-  pitch: 0,
+  // 30° initial pitch — subtle 3D tilt on first paint so the map
+  // doesn't read as a flat document. Switches back to pitch 0 when
+  // the demo / follow-cam want a top-down view explicitly.
+  pitch: 30,
   bearing: 0,
 };
 
@@ -1228,19 +1231,24 @@ export default function App() {
     });
 
     // ─── t = 25s ──────────────────────────────────────────────
-    // Flip to 3D Photorealistic Tiles with a pitched bearing
-    // sweep. Building geometry + glare hotspots in one shot.
+    // Close-up zoom to z=18 over the route — orange-vs-blue
+    // segment colors are unmistakable at this scale, and the
+    // glare hotspots (now visible from the 2pm planned time)
+    // sit right against the route. Toast surfaces the "+15°F"
+    // claim again so the recording's voiceover has a beat to
+    // call it out.
     schedule(25_000, () => {
-      setMapView('3d');
+      setMapView('2d');
       setViewState({
         longitude: MID_LNG,
         latitude: MID_LAT,
-        zoom: 17,
-        pitch: 60,
-        bearing: 25,
-        transitionDuration: 3000,
+        zoom: 18,
+        pitch: 30,
+        bearing: 15,
+        transitionDuration: 2500,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
+      setToastMessage('🔆 Glare zones glow — +15°F felt temperature');
     });
 
     // ─── t = 30s ──────────────────────────────────────────────
@@ -1268,16 +1276,31 @@ export default function App() {
     });
 
     // ─── t = 52s ──────────────────────────────────────────────
-    // Start the simulated navigation. Mock GPS walks the route
-    // polyline over 7 s; the chevron + follow-cam respect it via
-    // demoLiveCoord. Brief camera reset to follow-cam zoom 17.
+    // Start the simulated navigation. Mock GPS walks the polyline
+    // over 8 s; the chevron + follow-cam respect it via
+    // demoLiveCoord. Camera is zoomed in to z=18 with a 45° pitch
+    // for a true follow-cam feel — the existing follow-cam effect
+    // in App.tsx picks up the demoLiveCoord changes and tracks the
+    // chevron with the configured 500 ms transition.
     schedule(52_000, () => {
       if (!selectedRoute) return;
       const polyline = selectedRoute.polyline;
       if (polyline.length < 2) return;
       setNavigating(true);
+      // Prime the camera at the start of the route at z=18 pitch
+      // 45 so the follow-cam doesn't have to fly in from z=15.
+      const first = polyline[0]!;
+      setViewState({
+        longitude: first.lng,
+        latitude: first.lat,
+        zoom: 18,
+        pitch: 45,
+        bearing: 0,
+        transitionDuration: 800,
+        transitionInterpolator: new FlyToInterpolator(),
+      } as MapViewState);
       const startMs = performance.now();
-      const durationMs = 7_000;
+      const durationMs = 8_000;
       const tick = (now: number) => {
         const elapsed = now - startMs;
         const t = Math.min(1, elapsed / durationMs);
@@ -1725,12 +1748,17 @@ export default function App() {
         // mobile-sheet bottom-stacking off.
         routeSheetOpen={!useSidebar && sheetOpen && !navigating}
         navigating={navigating}
+        // On desktop, stack just below the ThemeToggle at top-right
+        // so the two form a single vertical toolbar (item 4 of the
+        // 2026-06-07 polish pass).
+        stackedTopRight={useSidebar}
       />
 
       <DataAttribution
-        // Hide the bottom attribution whenever the mobile sheet, nav
-        // chrome, or desktop sidebar covers the bottom band.
-        visible={!navigating && (useSidebar || !sheetOpen)}
+        // Floating attribution is mobile-only now — desktop renders
+        // an inline copy at the bottom of the sidebar. Hidden during
+        // navigation and when the mobile sheet covers the band.
+        visible={!useSidebar && !navigating && !sheetOpen}
       />
     </>
   );
@@ -1754,6 +1782,31 @@ export default function App() {
         }}
         aria-label="Search + route options"
       >
+        {isDemoMode && !demoRunning && (
+          <button
+            type="button"
+            onClick={runDemoSequence}
+            className="gma-press flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold uppercase tracking-[0.18em]"
+            style={{
+              background: 'rgba(30, 41, 59, 0.06)',
+              color: 'rgb(30, 41, 59)',
+              border: '1px solid rgba(30, 41, 59, 0.12)',
+              fontFamily: 'var(--font-data)',
+            }}
+            aria-label="Start the recorded demo sequence"
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'rgb(220, 38, 38)',
+              }}
+            />
+            Start Demo
+          </button>
+        )}
         <SearchBar
           origin={origin}
           destination={destination}
@@ -1822,6 +1875,20 @@ export default function App() {
           dayColor={daylight.color}
           onStart={handleStartNavigation}
         />
+        {/* Sidebar-bottom attribution — replaces the floating chip
+         * on desktop so the map area stays clean. Inline (not gma-glass)
+         * so it sits flat at the bottom of the sidebar column. */}
+        <div
+          className="mt-auto pt-2 text-[10px] leading-snug"
+          style={{
+            color: 'rgb(71, 85, 105)',
+            fontFamily: 'var(--font-data)',
+            borderTop: '1px solid var(--gma-border)',
+          }}
+          aria-label="Data sources"
+        >
+          Sun data: Google Solar API · Trees: OpenStreetMap · Updated live
+        </div>
       </aside>
       <div className="relative flex-1 overflow-hidden">
         {renderMapAndSharedChrome()}
@@ -1829,7 +1896,12 @@ export default function App() {
       <Toast message={toastMessage} />
       <VersionLabel />
       <DemoWatermark visible={isDemoMode} />
-      <DemoButton visible={isDemoMode && !demoRunning} onStart={runDemoSequence} />
+      <DemoButton
+        // Floating CTA is mobile-only; the desktop sidebar renders
+        // its own subtle Start Demo button at the top.
+        visible={!useSidebar && isDemoMode && !demoRunning}
+        onStart={runDemoSequence}
+      />
     </div>
   ) : (
     // ─── MOBILE / NAVIGATION LAYOUT ────────────────────────────────
@@ -1841,7 +1913,12 @@ export default function App() {
       <Toast message={toastMessage} />
       <VersionLabel />
       <DemoWatermark visible={isDemoMode} />
-      <DemoButton visible={isDemoMode && !demoRunning} onStart={runDemoSequence} />
+      <DemoButton
+        // Floating CTA is mobile-only; the desktop sidebar renders
+        // its own subtle Start Demo button at the top.
+        visible={!useSidebar && isDemoMode && !demoRunning}
+        onStart={runDemoSequence}
+      />
     </div>
   );
 }

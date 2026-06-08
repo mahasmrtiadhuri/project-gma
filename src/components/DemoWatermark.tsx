@@ -21,10 +21,10 @@ export function DemoWatermark({ visible }: DemoWatermarkProps) {
         top: 'max(env(safe-area-inset-top, 0px), 8px)',
         left: '8px',
         zIndex: 250,
-        background: 'rgba(220, 38, 38, 0.85)',
-        color: '#ffffff',
+        background: 'rgba(30, 41, 59, 0.78)', // slate-800 @ 0.78
+        color: 'rgba(255, 255, 255, 0.92)',
         fontFamily: 'var(--font-data)',
-        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.35)',
+        boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)',
       }}
       aria-label="Demo mode active"
     >

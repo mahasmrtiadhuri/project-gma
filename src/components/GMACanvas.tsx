@@ -47,8 +47,10 @@ const ESRI_SATELLITE_TILES =
 const FOREST_FILL: Color = [30, 130, 60, 50];
 const FOREST_OUTLINE: Color = [30, 100, 50, 120];
 
-// Tree dot color — per spec rgba(30, 100, 50, 0.6).
-const TREE_DOT_COLOR: Color = [30, 100, 50, 153];
+// Tree dot color — opacity 0.5 (128/255) so the dots blend
+// naturally with the basemap instead of standing out as
+// hard puncta. Was 153 (0.6).
+const TREE_DOT_COLOR: Color = [30, 100, 50, 128];
 
 // Building footprint / shadow polygon fill — per the UI-polish pass:
 // `rgba(100, 100, 120, 0.08)` no stroke. Buildings (rendered at the
@@ -84,17 +86,18 @@ const HEADING_CHEVRON_SVG =
 // animation against deck.gl's static-icon raster cache.
 const ORIGIN_PIN_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">' +
-  '<circle cx="20" cy="20" r="18" fill="rgba(66,133,244,0.20)"/>' +
-  '<circle cx="20" cy="20" r="13" fill="rgba(66,133,244,0.35)"/>' +
-  '<circle cx="20" cy="20" r="8" fill="rgb(66,133,244)" stroke="white" stroke-width="3"/>' +
+  '<circle cx="20" cy="20" r="18" fill="rgba(66,133,244,0.18)"/>' +
+  '<circle cx="20" cy="20" r="13" fill="rgba(66,133,244,0.32)"/>' +
+  '<circle cx="20" cy="20" r="8.5" fill="rgb(66,133,244)" stroke="white" stroke-width="4"/>' +
   '</svg>';
 
 // Destination = a real red teardrop map-pin. White outline,
-// solid red fill, white "eye" in the bulb.
+// solid red fill, white "eye" in the bulb. Thicker stroke
+// (3px) so the border reads at 60px.
 const DEST_PIN_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40">' +
-  '<path d="M16 1 C9 1 3 6.6 3 13.5 C3 22 16 39 16 39 C16 39 29 22 29 13.5 C29 6.6 23 1 16 1 Z" fill="rgb(220,38,38)" stroke="white" stroke-width="2"/>' +
-  '<circle cx="16" cy="13.5" r="4.5" fill="white"/>' +
+  '<path d="M16 1 C9 1 3 6.6 3 13.5 C3 22 16 39 16 39 C16 39 29 22 29 13.5 C29 6.6 23 1 16 1 Z" fill="rgb(220,38,38)" stroke="white" stroke-width="3"/>' +
+  '<circle cx="16" cy="13.5" r="5" fill="white"/>' +
   '</svg>';
 
 // Sunny-spot star — used by the "Sunny Spot 🌞" filter to mark
@@ -422,15 +425,43 @@ export function GMACanvas({
           shaded: shadedCount,
           widthPx: navigating ? 12 : 8,
         });
+        // Outer glow halo — wider, lower-opacity copy of the same
+        // per-segment color stack drawn UNDERNEATH the crisp route
+        // line. Reads as a Google-Maps-style soft bloom around the
+        // path without needing a real GPU blur pass.
+        const haloAlpha = 70; // out of 255 (~0.27)
+        out.push(
+          new PathLayer<ColoredSegment>({
+            id: 'route-comfort-overlay-halo',
+            data: coloredSegments,
+            getPath: (d) => d.path,
+            getColor: (d) =>
+              [d.color[0], d.color[1], d.color[2], haloAlpha] as Color,
+            getWidth: navigating ? 22 : 18,
+            widthUnits: 'pixels',
+            widthMinPixels: navigating ? 18 : 14,
+            capRounded: true,
+            jointRounded: true,
+            pickable: false,
+            parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            updateTriggers: {
+              getPath: coloredSegments,
+              getColor: coloredSegments,
+            },
+          }),
+        );
         out.push(
           new PathLayer<ColoredSegment>({
             id: 'route-comfort-overlay',
             data: coloredSegments,
             getPath: (d) => d.path,
             getColor: (d) => d.color,
-            getWidth: navigating ? 12 : 8,
+            // 12 px in nav (unchanged), 10 px in selection — bumped
+            // from 8 so the polyline reads as the primary signal
+            // even with the halo underneath.
+            getWidth: navigating ? 12 : 10,
             widthUnits: 'pixels',
-            widthMinPixels: navigating ? 10 : 7,
+            widthMinPixels: navigating ? 10 : 8,
             capRounded: true,
             jointRounded: true,
             pickable: !navigating,
@@ -460,7 +491,11 @@ export function GMACanvas({
           data: [originPoint],
           getPosition: (d) => [d.lng, d.lat],
           getIcon: () => ORIGIN_PIN_ICON,
-          getSize: 48,
+          // 60 px so the puck reads at any zoom without the user
+          // having to hunt for it. White stroke is baked into the
+          // SVG so the marker pops against both dark and light
+          // basemaps.
+          getSize: 60,
           sizeUnits: 'pixels',
           pickable: false,
           parameters: { depthCompare: 'always', depthWriteEnabled: false },
@@ -477,7 +512,7 @@ export function GMACanvas({
           data: [destinationPoint],
           getPosition: (d) => [d.lng, d.lat],
           getIcon: () => DEST_PIN_ICON,
-          getSize: 40,
+          getSize: 60,
           sizeUnits: 'pixels',
           pickable: false,
           parameters: { depthCompare: 'always', depthWriteEnabled: false },

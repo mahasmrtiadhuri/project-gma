@@ -3771,3 +3771,48 @@ New script in App.tsx `runDemoSequence`. Same setTimeout-based scheduling + `dem
 
 - `tsc -b` clean
 - `vite build` clean (~1.47 MB main chunk, CSS ~30.7 KB / gzip 6.9 KB, ~11 s)
+
+---
+
+## 2026-06-07 — Google-level polish pass (16 items)
+
+A big consolidation of small visual / layout fixes for the recording session.
+
+### Map layer
+
+- **Pins 60 px with thicker white stroke** ([src/components/GMACanvas.tsx](src/components/GMACanvas.tsx)) — origin SVG halo radii tuned + stroke 3 → 4 px so the "you-are-here" puck reads at the bigger size. Destination teardrop stroke 2 → 3 px. Both `IconLayer.getSize` 40/48 → 60. The `navigating` gate was already removed earlier — pins surface whenever `selectedRoute` exists.
+- **Route polyline glow halo** — new `route-comfort-overlay-halo` PathLayer rendered UNDER the crisp line, same per-segment color tinted to alpha 70/255, width 18 px (selection) / 22 px (nav). Reads as a soft Google-Maps bloom without a real GPU blur pass. Foreground line width bumped 8 → 10 px in selection mode.
+- **Tree dots opacity** — `TREE_DOT_COLOR` alpha 153 → 128 (0.6 → 0.5). Dots blend into the basemap instead of standing out as puncta.
+- **Initial pitch 30°** ([src/App.tsx](src/App.tsx) `INITIAL_VIEW_STATE`) — subtle 3D tilt on first paint so the map doesn't read as a flat document.
+
+### Sidebar / map chrome layout
+
+- **Attribution moved into sidebar bottom** — desktop now renders an inline `Sun data: Google Solar API · Trees: OpenStreetMap · Updated live` line at the bottom of the aside, separated by a hairline border. The floating `<DataAttribution>` is gated to `!useSidebar` so the map area stays clean.
+- **Demo button moved into sidebar top (desktop)** — when `?demo=true && !demoRunning`, a subtle dark-grey "● Start Demo" pill renders as the first sidebar child above SearchBar. Floating crimson CTA stays for mobile only (`!useSidebar` gate added).
+- **MapViewSwitcher `stackedTopRight` mode** — new prop. On desktop, MapViewSwitcher pins to `right-4, top: calc(env+4rem)` (right under the ThemeToggle) so the two form a single vertical toolbar. Bottom-right dynamic positioning preserved for mobile.
+
+### Typography + color
+
+- **DEMO MODE watermark** — red bg → `rgba(30, 41, 59, 0.78)` (slate-800 / dark-grey). Reads as a chrome chip, not an alert.
+- **Positive comfort → emerald-600 `#059669`** — `rgb(30, 120, 60)` swept-replaced everywhere in RouteSheet (6 sites: condition-color map, sidebar variant, calm wind badge, sheltered wind badge, cooler-feels-like badge, and the inline informational text).
+- **Micro-text contrast** — `SegmentBreakdownBar` caption switched from `var(--gma-text-secondary)` to slate-600 `rgb(71, 85, 105)` + bumped to `text-[11px] font-medium` so the `60 % shaded · 30 % sunny · 10 % glass glare` line stays legible at small size.
+
+### Card layout
+
+- **Filter pill row gradient fade** — wrapped in a `relative` container with a `pointer-events-none absolute right-0 w-10` overlay that gradients from transparent → `var(--gma-surface)`. Hints at horizontal overflow without blocking taps on the underlying pills.
+- **Search input dot alignment** — SearchRow gained `min-h-[48px]` so the dot box has a stable parent height; the existing `flex items-center` then centers it vertically on the input regardless of which dot variant is rendered.
+- (Nested scrollbars + sidebar 16 px padding consistency verified — already in place; the embedded `RouteSheet` is the only internal scroller and the aside is `p-4` throughout.)
+
+### Demo sequence — t=25 + t=52 rewritten
+
+- **t=25 s** — dropped the 3D Photorealistic Tiles flip. Replaced with a clean close-up at `zoom 18, pitch 30, bearing 15` (still in 2D mode so the segment colors stay crisp against the Carto basemap) plus a toast: `🔆 Glare zones glow — +15°F felt temperature`.
+- **t=52 s nav simulation** — duration bumped 7 → 8 s. Camera primes to the route start at `zoom 18, pitch 45` (was z 17 pitch 0 inherited from the prior step) so the chevron walks the polyline with a true follow-cam feel. The existing `follow-cam` effect picks up `demoLiveCoord` changes via `effectiveLiveCoord` and tracks the chevron with its configured 500 ms transitions; remaining-distance/time tick down via the existing `routeProgress` memo.
+
+### Files touched
+
+- Updated: [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) (pins, halo layer, tree opacity), [src/components/MapViewSwitcher.tsx](src/components/MapViewSwitcher.tsx) (stackedTopRight), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) (emerald color, slate caption, pill fade), [src/components/SearchBar.tsx](src/components/SearchBar.tsx) (row min-h), [src/components/DemoWatermark.tsx](src/components/DemoWatermark.tsx) (color), [src/App.tsx](src/App.tsx) (initial pitch, sidebar DemoButton + attribution, desktop gating, demo sequence rewrite).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.47 MB main chunk, CSS ~30.8 KB / gzip 6.95 KB, ~11 s)
