@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   routeComfortPercent,
   routeRainComfortPercent,
@@ -272,6 +272,25 @@ export function RouteSheet({
   const isRainFilter = filterMode === 'avoid-rain';
   const [showMoreOptions, setShowMoreOptions] = useState(false);
 
+  // Auto-expand More Options whenever the selected route lives inside
+  // it. Without this, the demo's filter cycle (or any manual selection
+  // of route 2+) can leave the selected card hidden under a collapsed
+  // expander, leaving the viewer unsure which option was chosen.
+  // routes[0] = comfort (GMA pick); the index with min durationSeconds
+  // = fastest; anything else = inside More Options.
+  useEffect(() => {
+    if (routes.length === 0) return;
+    const fastestIdx = routes.reduce(
+      (minIdx, r, i, arr) =>
+        r.durationSeconds < arr[minIdx]!.durationSeconds ? i : minIdx,
+      0,
+    );
+    const comfortIdx = 0;
+    const selectedIsInOthers =
+      selectedRouteIdx !== fastestIdx && selectedRouteIdx !== comfortIdx;
+    if (selectedIsInOthers) setShowMoreOptions(true);
+  }, [selectedRouteIdx, routes]);
+
   // Hide the Avoid Rain pill when probability is too low to matter.
   // (We still keep it visible if the user already selected it — pulling
   // a pill out from under them mid-session would be confusing.)
@@ -365,28 +384,13 @@ export function RouteSheet({
                 ? 'var(--gma-accent-wind)'
                 : 'var(--gma-accent-neutral)';
           return (
-            <button
+            <FilterPill
               key={mode}
-              type="button"
+              active={active}
+              accent={accent}
+              label={meta.label}
               onClick={() => onFilterChange(mode)}
-              className="gma-press inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-5 text-sm font-medium"
-              style={
-                active
-                  ? {
-                      background: accent,
-                      borderColor: 'transparent',
-                      color: 'var(--gma-text-on-accent)',
-                      boxShadow: 'var(--gma-glow-amber)',
-                    }
-                  : {
-                      background: 'var(--gma-surface)',
-                      borderColor: 'rgba(15, 23, 42, 0.10)',
-                      color: 'rgb(51, 65, 85)', // slate-700
-                    }
-              }
-            >
-              {meta.label}
-            </button>
+            />
           );
         })}
         </div>
@@ -670,6 +674,22 @@ function RouteCard({
   filterMode,
   breakdown,
 }: RouteCardProps) {
+  // Scroll the card into view whenever it becomes the selected one.
+  // Required for the demo's filter-cycle beats and any manual
+  // selection where the chosen card may be below the sidebar fold
+  // (a 3-route ranking can push the GMA Pick off-screen on short
+  // viewports). `block: 'nearest'` keeps the scroll minimal so cards
+  // already in view don't jolt.
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!selected || !buttonRef.current) return;
+    buttonRef.current.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [selected]);
+
   const showFastestBadge = variant === 'fastest' || variant === 'combined';
   const showGmaBadge = variant === 'gma' || variant === 'combined';
   const gmaAccent = gmaAccentFor(filterMode);
@@ -727,6 +747,7 @@ function RouteCard({
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onClick}
       aria-pressed={selected}
@@ -852,6 +873,57 @@ function CloseIcon() {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+// ---------- FilterPill -------------------------------------------------
+// Single filter pill in the horizontal scroll row. Wraps the button in a
+// component so it can hold its own ref + useEffect — when the pill
+// becomes `active` it scrolls itself into view in the overflow-x parent.
+// Required for the demo's filter-cycle beats (avoid-sun → avoid-wind →
+// sunny-spot → avoid-both → avoid-sun), where the active pill could
+// otherwise sit off the right edge and leave the viewer unsure which
+// filter is selected.
+interface FilterPillProps {
+  active: boolean;
+  accent: string;
+  label: string;
+  onClick: () => void;
+}
+
+function FilterPill({ active, accent, label, onClick }: FilterPillProps) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!active || !ref.current) return;
+    ref.current.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [active]);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      className="gma-press inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-5 text-sm font-medium"
+      style={
+        active
+          ? {
+              background: accent,
+              borderColor: 'transparent',
+              color: 'var(--gma-text-on-accent)',
+              boxShadow: 'var(--gma-glow-amber)',
+            }
+          : {
+              background: 'var(--gma-surface)',
+              borderColor: 'rgba(15, 23, 42, 0.10)',
+              color: 'rgb(51, 65, 85)', // slate-700
+            }
+      }
+    >
+      {label}
+    </button>
   );
 }
 

@@ -1490,43 +1490,45 @@ export default function App() {
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
 
+    // Single source of truth for the demo prompt so the typewriter
+    // and the auto-submit can never drift apart. Per the final spec,
+    // the prompt only names the origin and destination — no body
+    // context, no comfort preferences (the avoid-sun filter is
+    // applied independently at t=20 s by the fallback path so the
+    // demo still showcases the shade-routing feature).
+    const DEMO_PROMPT =
+      "I'm at 1251 Avenue of the Americas going to the Chrysler Building.";
+
     // ─── t = 3 s : AI chat panel opens + 50 ms/char typewriter ──
-    // Per spec exactly: 50 ms per character. Submit at t=18s. The
-    // typing finishes around t=10s and then the typed prompt sits
-    // in the textarea for ~8 s — sells "the AI is reading what it
-    // typed" before committing to the submit.
+    // Per spec exactly: 50 ms per character. Submit at t=18 s. The
+    // shorter prompt finishes typing well before t=18 s — the
+    // textarea then holds the typed sentence as a "the AI is reading
+    // what it typed" beat before submission.
     schedule(3_000, () => {
       setChatMessages([]);
       setChatOpen(true);
-      const fullText =
-        'Running late to a presentation in a heavy suit. ' +
-        'Carrying a delicate cardboard model. ' +
-        'I am already overheating. Optimize my path.';
       const CHAR_INTERVAL = 50; // ms — explicit spec
       const TYPE_START = 500; // ms — let the panel slide-in finish
       setDemoTypewriterText('');
-      for (let i = 1; i <= fullText.length; i++) {
+      for (let i = 1; i <= DEMO_PROMPT.length; i++) {
         const id = window.setTimeout(() => {
-          setDemoTypewriterText(fullText.slice(0, i));
+          setDemoTypewriterText(DEMO_PROMPT.slice(0, i));
         }, TYPE_START + i * CHAR_INTERVAL);
         demoTimeoutsRef.current.push(id);
       }
     });
 
     // ─── t = 18 s : auto-submit ─────────────────────────────────
-    // Independent timeout (not nested inside the t=3s block) so the
-    // submission is anchored to t=18s exactly per spec, regardless
+    // Independent timeout (not nested inside the t=3 s block) so the
+    // submission is anchored to t=18 s exactly per spec, regardless
     // of how long the typewriter takes. handleSubmitPreference will
     // geocode origin + destination from the prompt, call setOrigin /
     // setDestination (which flashes the SearchBar inputs amber via
-    // the originFlashKey / destinationFlashKey counters), apply the
-    // avoid-sun filter, and post the AI reasoning bubble.
+    // the originFlashKey / destinationFlashKey counters), and post
+    // the AI reasoning bubble. Filter is forced to avoid-sun by the
+    // t=20 s fallback block below regardless of what Gemini returns.
     schedule(18_000, () => {
-      const fullText =
-        'Running late to a presentation in a heavy suit. ' +
-        'Carrying a delicate cardboard model. ' +
-        'I am already overheating. Optimize my path.';
-      void handleSubmitPreference(fullText);
+      void handleSubmitPreference(DEMO_PROMPT);
       // Release the typewriter override 300 ms after submit so the
       // chat input goes back to free-form for any user follow-up.
       const releaseId = window.setTimeout(

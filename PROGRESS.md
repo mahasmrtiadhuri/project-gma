@@ -4580,3 +4580,55 @@ Per spec. The demo's `runDemoSequence` never calls `setNavigating(true)`. The `s
 ### Build status
 - `npx tsc -b` clean
 - `npx vite build` clean (existing >500 kB chunk advisory only)
+
+---
+
+## 2026-06-08 — Demo: selection visibility + simpler prompt
+
+User feedback after the previous final-cut: (1) during filter cycling and route selection, the "chosen" option wasn't always visible on the left sidebar — the active filter pill could be horizontally off-screen, the selected route card could be vertically off-screen or hidden behind the collapsed "More options" expander; (2) the typewriter prompt should only name the origin and destination, not the body context.
+
+### 1. Simpler typewriter prompt ([src/App.tsx](src/App.tsx) `runDemoSequence`)
+
+Replaced the multi-clause body-context prompt with a single route statement that only names origin and destination:
+
+```
+I'm at 1251 Avenue of the Americas going to the Chrysler Building.
+```
+
+Hoisted to a `DEMO_PROMPT` const at the top of the demo so the typewriter (t=3 s) and the auto-submit (t=18 s) share one source of truth — they can never drift apart on edits.
+
+`avoid-sun` is no longer extracted from the prompt — instead the t=20 s fallback explicitly calls `setFilterMode('avoid-sun')` and `setIntensityMultiplier(1.5)` so the shade-routing feature still anchors the demo regardless of what Gemini infers.
+
+### 2. Selected RouteCard scrolls itself into view ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx))
+
+Added a ref + `useEffect` inside `RouteCard` so the card calls `scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })` whenever its `selected` prop flips true. Required for the demo's filter cycle — on short viewports, the GMA Pick card could otherwise sit below the sidebar fold and the viewer wouldn't see the selection swap when a filter changed the ranking.
+
+`block: 'nearest'` keeps scroll motion minimal — cards already visible don't jolt.
+
+### 3. Active filter pill scrolls itself into view
+
+Extracted the in-place filter pill `<button>` into a small `FilterPill` component (~60 lines). Each pill holds its own ref + `useEffect`: when `active` flips true, it calls `scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })` on its parent overflow-x scroll container. `inline: 'center'` centers the active pill in the visible portion of the row so the viewer always sees it land.
+
+Fixes the demo's filter-cycle scene (t=43 → 48 → 52 → 56) where the active pill could otherwise slide off the right edge as the row scrolled and leave the viewer unsure which filter was selected.
+
+### 4. Auto-expand More Options when the selection is hidden
+
+Added a `useEffect` at the top of `RouteSheet` that watches `selectedRouteIdx` and `routes`:
+
+```ts
+const fastestIdx = routes.reduce(
+  (minIdx, r, i, arr) =>
+    r.durationSeconds < arr[minIdx]!.durationSeconds ? i : minIdx,
+  0,
+);
+const comfortIdx = 0; // routes are sorted by hlciCost asc
+if (selectedRouteIdx !== fastestIdx && selectedRouteIdx !== comfortIdx) {
+  setShowMoreOptions(true);
+}
+```
+
+So any manual or programmatic selection of route 2+ auto-opens the collapsed expander, revealing the selected card. Never re-collapses on selection back to fastest/comfort — the user can collapse it explicitly via the existing toggle.
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (existing >500 kB chunk advisory only)
