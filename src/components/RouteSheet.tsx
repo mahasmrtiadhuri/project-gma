@@ -390,7 +390,7 @@ export function RouteSheet({
               key={mode}
               type="button"
               onClick={() => onFilterChange(mode)}
-              className="gma-press inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-sm"
+              className="gma-press inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-full border px-5 text-sm font-medium"
               style={
                 active
                   ? {
@@ -400,9 +400,9 @@ export function RouteSheet({
                       boxShadow: 'var(--gma-glow-amber)',
                     }
                   : {
-                      background: 'var(--gma-hover-bg)',
-                      borderColor: 'transparent',
-                      color: 'var(--gma-text-secondary)',
+                      background: 'var(--gma-surface)',
+                      borderColor: 'rgba(15, 23, 42, 0.10)',
+                      color: 'rgb(51, 65, 85)', // slate-700
                     }
               }
             >
@@ -781,7 +781,7 @@ function RouteCard({
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className="gma-lift flex min-h-[64px] w-full items-stretch gap-3 overflow-hidden rounded-xl border p-3 text-left"
+      className="gma-lift flex min-h-[72px] w-full items-stretch gap-3 overflow-hidden rounded-xl border p-4 text-left"
       style={cardStyle}
     >
       <div
@@ -828,14 +828,14 @@ function RouteCard({
         </div>
         <div className="mt-1 flex items-baseline gap-2">
           <span
-            className="text-base"
-            style={{ color: titleColor }}
+            className="text-lg font-semibold"
+            style={{ color: titleColor, letterSpacing: '-0.01em' }}
           >
             {min} min
           </span>
         </div>
         <div
-          className="mt-0.5 truncate text-xs"
+          className="mt-0.5 truncate text-sm"
           style={{ color: subColor }}
         >
           {km} km · {route.label}
@@ -862,10 +862,14 @@ function RouteCard({
       <div className="flex shrink-0 flex-col items-end gap-1 self-center">
         {comfortBadge && (
           <span
-            className="whitespace-nowrap text-sm font-semibold"
+            // Larger + heavier than the previous text-sm semibold so
+            // the comfort delta (e.g. "~4°F cooler") reads as the
+            // primary signal on each route card.
+            className="whitespace-nowrap text-base font-bold"
             style={{
               color: comfortBadge.color,
               fontFamily: 'var(--font-data)',
+              letterSpacing: '-0.01em',
             }}
           >
             {comfortBadge.text}

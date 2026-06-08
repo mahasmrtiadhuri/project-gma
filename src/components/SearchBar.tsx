@@ -62,6 +62,10 @@ export function SearchBar({
           boxShadow:
             '0 20px 48px rgba(15, 23, 42, 0.18), 0 6px 16px rgba(15, 23, 42, 0.10)',
           overflow: 'visible',
+          // Thin amber top accent — Apple-Maps-style "this is the
+          // primary action surface" cue. Reads as a brand thread
+          // tying the search card to the amber Start CTA.
+          borderTop: '3px solid #F59E0B',
         }}
       >
         <SearchRow

@@ -4062,3 +4062,49 @@ Combined with item 2's t=58 s fly-out:
 
 - `tsc -b` clean
 - `vite build` clean (~1.48 MB main chunk, ~28 s)
+
+---
+
+## 2026-06-08 — Persistent map legend, demo route variety, sidebar polish
+
+### 1. Persistent color legend (desktop)
+
+New [src/components/PersistentMapLegend.tsx](src/components/PersistentMapLegend.tsx). Small always-visible white card pinned bottom-left at `left: 16; bottom: calc(env+16rem); z: 49` (just below the persistent "?" button at z-50, so the button stays tappable when both mount). Lists the four map-layer color codes the user is actually looking at:
+
+- 🔴 Large orange-red dot — Glass glare hotspot (+15°F)
+- 🟢 Small green dot — Tree canopy
+- 🟠 Orange line — Sunny street segment
+- 🔵 Blue line — Shaded street segment
+
+Slate-700 text, Inter typography, 12 px body / 10 px Legend header, slate-500 unit annotation ("(+15°F)"). Not collapsible, never animates. Mounted in App.tsx gated on `useSidebar && !navigating && coloredSegments.length > 0` — desktop-only since the card would crowd a phone viewport (mobile still has the "?" tooltip).
+
+### 2. Demo route variety — One Vanderbilt → Bryant Park
+
+The 432 Park → Bryant Park route was reading as a continuous orange streak because it was entirely south-bound on Madison Ave, which is sun-facing at the demo's locked 2 PM time. Swapped origin to **One Vanderbilt (40.7557, -73.98)** so the corridor runs west toward Bryant Park instead. The new ~0.25 mi walk exercises every classifier branch in the visible window:
+
+- 🔵 blue: One Vanderbilt's tower shadow falling on the north side of 42nd St.
+- 🟠 orange: south-facing 42nd-St stretches that escape the shadow.
+- 🟢 green: Bryant Park's tree edge as the route approaches the destination.
+- 🔴 red: glass-glare hotspot off One Vanderbilt's south facade.
+
+App.tsx [`runDemoSequence`](src/App.tsx) — `ORIGIN` const updated, `setOrigin({ point: ORIGIN, label: 'One Vanderbilt' })`. Destination unchanged.
+
+### 3. Sidebar polish
+
+Pass over the sidebar UI to push it from "functional" → "premium".
+
+- **SearchBar amber top accent** ([src/components/SearchBar.tsx](src/components/SearchBar.tsx)) — added `borderTop: 3px solid #F59E0B` to the card. Reads as a brand thread tying the primary input surface to the amber Start CTA.
+- **Route card padding + bolder comfort delta** ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)) — outer `p-3 min-h-[64px]` → `p-4 min-h-[72px]`. Comfort badge (`~4°F cooler` etc) bumped `text-sm font-semibold` → `text-base font-bold` with `letter-spacing: -0.01em` so the temp delta reads as the primary signal on each card.
+- **Filter pills border + padding** — `px-4 text-sm` → `px-5 text-sm font-medium`. Inactive pills now use `var(--gma-surface)` background with a `rgba(15, 23, 42, 0.10)` hairline border + slate-700 text instead of the prior flat hover-bg fill. Reads as a proper "tappable surface" rather than ambiguous chip.
+- **Route card primary text bigger** — `{min} min` from `text-base` → `text-lg font-semibold` (+ tightened letter-spacing). Subtitle `{km} km · {route.label}` from `text-xs` → `text-sm`.
+- **GMA · Beta version label** ([src/App.tsx](src/App.tsx)) — tiny chip at the very bottom of the desktop sidebar (after the attribution row). slate-400 `10px uppercase tracking-[0.22em]` mono — quiet trust signal, doesn't compete for attention.
+
+### Files touched
+
+- New: [src/components/PersistentMapLegend.tsx](src/components/PersistentMapLegend.tsx).
+- Updated: [src/components/SearchBar.tsx](src/components/SearchBar.tsx), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx), [src/App.tsx](src/App.tsx) (legend mount, demo origin, GMA Beta label).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.48 MB main chunk, ~23 s)

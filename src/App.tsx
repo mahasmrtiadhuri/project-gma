@@ -32,6 +32,7 @@ import {
   RouteLegendOverlay,
   RouteLegendButton,
 } from './components/RouteLegendOverlay';
+import { PersistentMapLegend } from './components/PersistentMapLegend';
 import { TimeScrubber } from './components/TimeScrubber';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useTheme } from './hooks/useTheme';
@@ -1261,11 +1262,16 @@ export default function App() {
       demoTimeoutsRef.current.push(id);
     };
 
-    // ─── Demo route: 432 Park Avenue → Bryant Park ─────────────
-    // This corridor passes glass towers (red glare), sunny avenues
-    // (orange), tree-lined park edges (green), and building shadows
-    // (blue) — all four classifier outputs in a single 0.6 mi walk.
-    const ORIGIN = { lat: 40.7613, lng: -73.9718 };
+    // ─── Demo route: One Vanderbilt → Bryant Park ──────────────
+    // Shorter (~0.25 mi) than the prior 432 Park route, which was
+    // entirely south-bound on Madison and read as one continuous
+    // orange streak. The west-bound corridor between One Vanderbilt
+    // and Bryant Park exercises every classifier branch in the
+    // visible window: shadow cast by One Vanderbilt's tower
+    // (blue), 42nd-St sunny stretches (orange), Bryant Park's
+    // tree edge (green), and a glass-glare hotspot directly off
+    // the tower's south facade (red).
+    const ORIGIN = { lat: 40.7557, lng: -73.98 };
     const DESTINATION = { lat: 40.7536, lng: -73.9832 };
     const MID_LAT = (ORIGIN.lat + DESTINATION.lat) / 2;
     const MID_LNG = (ORIGIN.lng + DESTINATION.lng) / 2;
@@ -1278,7 +1284,7 @@ export default function App() {
     schedule(1_600, () => setDemoIntroVisible(false));
 
     // ─── t = 0 s : seed route + reset chrome ────────────────────
-    setOrigin({ point: ORIGIN, label: '432 Park Avenue' });
+    setOrigin({ point: ORIGIN, label: 'One Vanderbilt' });
     setDestination({ point: DESTINATION, label: 'Bryant Park' });
     setMapView('2d');
     setTheme('light'); // light mode for the entire demo
@@ -1869,6 +1875,21 @@ export default function App() {
         onChange={setDemoHour}
       />
 
+      {/* Desktop-only persistent legend card. Sits above the "?"
+       * button and lists the four map-layer color codes (glare
+       * hotspot, tree dot, sunny segment, shaded segment) so the
+       * user always has the symbol→meaning lookup on screen. Mobile
+       * keeps its on-tap "?" tooltip instead — the persistent card
+       * would crowd a phone viewport. */}
+      <PersistentMapLegend
+        visible={
+          useSidebar &&
+          !navigating &&
+          coloredSegments != null &&
+          coloredSegments.length > 0
+        }
+      />
+
       {/* Persistent "?" route-color legend button — bottom-left.
        * Visible whenever a colored route is on the map so the user
        * can recall the legend after the auto-show has faded. */}
@@ -2058,6 +2079,19 @@ export default function App() {
           aria-label="Data sources"
         >
           Sun data: Google Solar API · Trees: OpenStreetMap · Updated live
+        </div>
+        {/* GMA · Beta — tiny version chip at the very bottom of the
+         * sidebar. slate-400 so it sits as a quiet trust signal
+         * without competing with anything else for attention. */}
+        <div
+          className="pt-1.5 text-center text-[10px] uppercase tracking-[0.22em]"
+          style={{
+            color: 'rgb(148, 163, 184)', // slate-400
+            fontFamily: 'var(--font-data)',
+          }}
+          aria-label="App version"
+        >
+          GMA · Beta
         </div>
       </aside>
       <div className="relative flex-1 overflow-hidden">
