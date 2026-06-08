@@ -173,6 +173,12 @@ export default function App() {
   // as noise on a recording.
   const [demoIntroVisible, setDemoIntroVisible] = useState(false);
   const [glarePulsePhase, setGlarePulsePhase] = useState(0);
+  // Typewriter override pushed into RouteSheet's preference input
+  // during the AI demo step. Null means "let the user's normal typed
+  // value through"; any string forces the input to display that text.
+  const [demoTypewriterText, setDemoTypewriterText] = useState<string | null>(
+    null,
+  );
   const glarePulseRafRef = useRef<number | null>(null);
   const demoHourRafRef = useRef<number | null>(null);
 
@@ -1255,6 +1261,7 @@ export default function App() {
     }
     setDemoLiveCoord(null);
     setGlarePulsePhase(0);
+    setDemoTypewriterText(null);
     legendShownForRouteRef.current = null; // force legend to re-show
 
     const schedule = (delayMs: number, fn: () => void) => {
@@ -1346,10 +1353,13 @@ export default function App() {
       glarePulseRafRef.current = requestAnimationFrame(pulseTick);
     });
 
-    // ─── t = 20 s : auto-animate time scrubber 8 → 14 over 3 s ─
+    // ─── t = 20 s : auto-animate time scrubber 8 → 14 over 4 s ─
+    // Slider thumb visibly traverses the 6-AM-to-10-PM track while
+    // the entire route polyline + glare hotspots recompute live as
+    // the sun angle shifts toward midday.
     schedule(20_000, () => {
       const startMs = performance.now();
-      const duration = 3_000;
+      const duration = 4_000;
       const fromHour = 8;
       const toHour = 14;
       setDemoHour(fromHour);
@@ -1370,15 +1380,47 @@ export default function App() {
     // GMA's cooler-path comfort card appears alongside the fastest.
     schedule(25_000, () => setFilterMode('avoid-sun'));
 
-    // ─── t = 35 s : avoid wind — route recolors emerald/violet ─
-    schedule(35_000, () => setFilterMode('avoid-wind'));
+    // ─── t = 30 s : avoid wind — route recolors emerald/violet ─
+    schedule(30_000, () => setFilterMode('avoid-wind'));
 
-    // ─── t = 40 s : sunny spot — yellow stars overlay ──────────
-    schedule(40_000, () => setFilterMode('sunny-spot'));
+    // ─── t = 35 s : sunny spot — yellow stars overlay ──────────
+    schedule(35_000, () => setFilterMode('sunny-spot'));
 
-    // ─── t = 45 s : Gemini routing intent from free-text ───────
-    schedule(45_000, () => {
-      void handleSubmitPreference('I am walking in a suit');
+    // ─── t = 40 s : AI / Gemini — typewriter input + submit ────
+    // Character-by-character typewriter animation (50 ms per char)
+    // shows the natural-language flow landing in the conversational
+    // input, then auto-submits to Gemini. The override prop into
+    // RouteSheet's input swaps the displayed value while we type;
+    // the input is `disabled` during the override so the caret
+    // doesn't fight the animation. After the full string is in
+    // place we wait one tick, fire the submit, then clear the
+    // override so the input goes back to normal user-controlled.
+    schedule(40_000, () => {
+      const fullText = 'I am walking to a meeting in a suit';
+      setDemoTypewriterText('');
+      for (let i = 1; i <= fullText.length; i++) {
+        const delay = i * 50;
+        const id = window.setTimeout(() => {
+          setDemoTypewriterText(fullText.slice(0, i));
+        }, delay);
+        demoTimeoutsRef.current.push(id);
+      }
+      // Submit ~150 ms after the last keystroke so the viewer sees
+      // the full sentence settle before the busy spinner appears.
+      const submitId = window.setTimeout(
+        () => {
+          void handleSubmitPreference(fullText);
+          // Release the override so the input goes back to normal
+          // control once the demo step is complete.
+          const releaseId = window.setTimeout(
+            () => setDemoTypewriterText(null),
+            1_500,
+          );
+          demoTimeoutsRef.current.push(releaseId);
+        },
+        fullText.length * 50 + 150,
+      );
+      demoTimeoutsRef.current.push(submitId);
     });
 
     // ─── t = 52 s : navigation simulation (6 s walk) ───────────
@@ -1813,6 +1855,7 @@ export default function App() {
           }
           legendSnow={weather?.precipitationType === 'snow'}
           selectedRouteBreakdown={selectedRouteBreakdown}
+          overridePreferenceText={demoTypewriterText}
         />
       )}
       {!useSidebar && (
@@ -2037,6 +2080,7 @@ export default function App() {
             }
             legendSnow={weather?.precipitationType === 'snow'}
             selectedRouteBreakdown={selectedRouteBreakdown}
+            overridePreferenceText={demoTypewriterText}
           />
         )}
         <StartButton

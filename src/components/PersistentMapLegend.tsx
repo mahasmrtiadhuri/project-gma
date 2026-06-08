@@ -24,10 +24,12 @@ export function PersistentMapLegend({ visible }: PersistentMapLegendProps) {
     <div
       className="pointer-events-auto fixed rounded-xl px-3 py-2.5"
       style={{
-        left: '16px',
-        // Sits above the persistent "?" button (which is at env+12rem)
-        // with a 1 rem gap.
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16rem)',
+        // Anchored to the bottom-left of the MAP area (not the
+        // sidebar). The sidebar is 380 px wide; setting `left: 380px`
+        // pins the card right at the sidebar/map boundary. `bottom:
+        // 16px` keeps it clear of the viewport edge.
+        left: '380px',
+        bottom: '16px',
         zIndex: 49,
         background: '#ffffff',
         border: '1px solid rgba(15, 23, 42, 0.08)',

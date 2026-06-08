@@ -4108,3 +4108,48 @@ Pass over the sidebar UI to push it from "functional" → "premium".
 
 - `tsc -b` clean
 - `vite build` clean (~1.48 MB main chunk, ~23 s)
+
+---
+
+## 2026-06-08 — Legend on map area, AI typewriter in demo, longer slider animation
+
+### 1. Persistent legend → map area, not sidebar
+
+[src/components/PersistentMapLegend.tsx](src/components/PersistentMapLegend.tsx) — repositioned. Was `left: 16; bottom: calc(env+16rem)` (inside the sidebar's left edge). Now `left: 380px; bottom: 16px; zIndex: 49` — pinned to the bottom-left of the map area itself, just inside the sidebar/map boundary. The legend now lives on the surface it explains rather than crowding the sidebar's content column.
+
+### 2. AI / Gemini typewriter step in demo (t=40 s)
+
+The prior t=45 s `handleSubmitPreference(...)` jumped straight to a Gemini call with no on-screen evidence of the natural-language flow. Replaced with a character-by-character typewriter at t=40 s so the recording actually *shows* the AI feature being used:
+
+- New `demoTypewriterText: string | null` state in App.tsx.
+- New `overridePreferenceText?: string | null` prop on [RouteSheet](src/components/RouteSheet.tsx). When non-null, the conversational input renders `value={override}` instead of `value={preferenceInput}` AND is `disabled` so the caret doesn't fight the animation. The user's typed value (`preferenceInput`) is preserved across the override window — restoring it the moment override flips back to null.
+- Scheduler at t=40 s queues 35 setTimeouts (50 ms apart) that progressively reveal `'I'`, `'I '`, `'I a'`, … `'I am walking to a meeting in a suit'`. 150 ms after the last char, fires `handleSubmitPreference(fullText)` against the live Gemini path; 1.5 s after that, clears the override.
+- Both timer IDs (per-char + submit + release) push into `demoTimeoutsRef` so a demo abort/restart cancels them cleanly.
+- Both RouteSheet mounts (mobile floating + desktop sidebar) receive `overridePreferenceText={demoTypewriterText}`.
+
+### 3. Time slider animation 3 → 4 s
+
+App.tsx t=20 s step — `duration` 3 000 → 4 000 ms. Slider thumb visibly traverses more of the 6 AM → 10 PM track while the route polyline + glare hotspots recompute live as the sun angle shifts. Hour values still rounded to integer so the controlled `<input type=range step={1}>` thumb snaps cleanly through each station.
+
+### Demo sequence reshuffle (consequence of #2)
+
+The AI step moved from t=45 → t=40 displaces the prior sunny-spot filter. Other filters pulled in by 5 s each:
+
+| t (s) | Step |
+|---|---|
+| 25 | avoid-sun filter |
+| 30 | avoid-wind filter (was 35) |
+| 35 | sunny-spot filter (was 40) |
+| 40 | AI typewriter + Gemini submit (new — was Gemini call only at 45) |
+| 52 | nav sim (unchanged) |
+| 58 | fly-out (unchanged) |
+| 60 | silent end (unchanged) |
+
+### Files touched
+
+- Updated: [src/components/PersistentMapLegend.tsx](src/components/PersistentMapLegend.tsx) (reposition), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) (overridePreferenceText prop + plumbing), [src/App.tsx](src/App.tsx) (demoTypewriterText state, demo sequence reshuffle + typewriter, slider duration, prop plumbing).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.48 MB main chunk, ~16 s)

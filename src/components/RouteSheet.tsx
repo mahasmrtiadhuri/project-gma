@@ -247,6 +247,16 @@ export interface RouteSheetProps {
    * level, so the bar shows only on the selected card.
    */
   selectedRouteBreakdown?: SegmentBreakdown | null;
+  /**
+   * Demo-driven override for the conversational input. When non-null,
+   * the input visually displays this text instead of the user's typed
+   * value (which is preserved separately so a manual edit isn't lost
+   * across an override window). The demo scheduler uses this to drive
+   * a typewriter animation showing Gemini-style "I am walking to a
+   * meeting in a suit" landing character-by-character before the
+   * scheduler itself calls `onSubmitPreference(...)`.
+   */
+  overridePreferenceText?: string | null;
 }
 
 /**
@@ -273,6 +283,7 @@ export function RouteSheet({
   legendSnow = false,
   embedded = false,
   selectedRouteBreakdown = null,
+  overridePreferenceText = null,
 }: RouteSheetProps) {
   const dayAccent = `rgb(${dayColor[0]}, ${dayColor[1]}, ${dayColor[2]})`;
   const sunDirection = filterToSunDirection(filterMode);
@@ -431,10 +442,17 @@ export function RouteSheet({
       >
         <input
           type="text"
-          value={preferenceInput}
+          // Override wins while non-null (demo typewriter); otherwise
+          // the field is fully controlled by `preferenceInput`. The
+          // user's typed value is preserved across an override window
+          // because we only swap the displayed value, not the
+          // underlying state.
+          value={overridePreferenceText ?? preferenceInput}
           onChange={(event) => setPreferenceInput(event.target.value)}
           placeholder="e.g. I'm walking in a suit"
-          disabled={geminiBusy}
+          // Disabled during demo-driven typing too so the cursor /
+          // caret doesn't fight the typewriter animation.
+          disabled={geminiBusy || overridePreferenceText != null}
           maxLength={140}
           className="h-11 flex-1 rounded-full px-4 text-sm outline-none placeholder:text-[var(--gma-text-muted)] disabled:opacity-60"
           style={{
