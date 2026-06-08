@@ -23,6 +23,9 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { StartButton } from './components/StartButton';
 import { MapTapPopup } from './components/MapTapPopup';
 import { VersionLabel } from './components/VersionLabel';
+import { DemoButton } from './components/DemoButton';
+import { DemoWatermark } from './components/DemoWatermark';
+import { useDemoMode } from './hooks/useDemoMode';
 import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
 import { useWeatherData } from './hooks/useWeatherData';
@@ -131,7 +134,26 @@ export default function App() {
   // Theme toggle — defaults to 'light', persisted to localStorage by
   // the hook. Applies `class="dark"` to <html>, which trips the dark
   // tokens in globals.css and crossfades the entire UI in 300 ms.
-  const { theme, toggle: toggleTheme } = useTheme();
+  const { theme, toggle: toggleTheme, setTheme } = useTheme();
+
+  // Demo Mode — activated by `?demo=true` in the URL. Renders a
+  // floating START DEMO CTA + a top-left watermark. Tapping the CTA
+  // kicks off the 45 s scripted sequence (`runDemoSequence` below).
+  const isDemoMode = useDemoMode();
+  const [demoRunning, setDemoRunning] = useState(false);
+  const demoTimeoutsRef = useRef<number[]>([]);
+
+  // Clear any pending scheduled steps on unmount so a navigation
+  // away mid-demo doesn't fire setters against a dead component.
+  useEffect(
+    () => () => {
+      for (const id of demoTimeoutsRef.current) {
+        window.clearTimeout(id);
+      }
+      demoTimeoutsRef.current = [];
+    },
+    [],
+  );
 
   // ---- Feature-mount log ----------------------------------------------
   // Single mount-time log set so the user can confirm — from
@@ -1098,6 +1120,112 @@ export default function App() {
     }
   };
 
+  // ---- Demo Mode scripted sequence ----------------------------------
+  // 45 s scripted walkthrough for the recorded promo video. Activated
+  // by tapping the floating START DEMO button. Each step is scheduled
+  // via setTimeout from t=0; the ref array of timeout IDs lets us
+  // cancel cleanly on unmount. All filter / theme / camera changes
+  // hit the same setters a normal interaction would, so the demo is
+  // a real end-to-end exercise of the app, not a mocked recording.
+  //
+  // Origin = Times Square, destination = Grand Central. Route auto-
+  // fetches from the existing `[origin, destination, travelMode]`
+  // effect — no manual fetchCandidateRoutes call needed.
+  const runDemoSequence = useCallback(() => {
+    setDemoRunning(true);
+    // Wipe any leftover schedule before starting fresh.
+    for (const id of demoTimeoutsRef.current) {
+      window.clearTimeout(id);
+    }
+    demoTimeoutsRef.current = [];
+    const schedule = (delayMs: number, fn: () => void) => {
+      const id = window.setTimeout(fn, delayMs);
+      demoTimeoutsRef.current.push(id);
+    };
+
+    // Helpful landmark coords for the script.
+    const TIMES_SQUARE = { lat: 40.758, lng: -73.9855 };
+    const GRAND_CENTRAL = { lat: 40.7527, lng: -73.9772 };
+    const MID_LAT = (TIMES_SQUARE.lat + GRAND_CENTRAL.lat) / 2;
+    const MID_LNG = (TIMES_SQUARE.lng + GRAND_CENTRAL.lng) / 2;
+
+    // t = 0 s : Times Square → Grand Central, 2D zoom 14 flat
+    setOrigin({ point: TIMES_SQUARE, label: 'Times Square' });
+    setDestination({
+      point: GRAND_CENTRAL,
+      label: 'Grand Central Terminal',
+    });
+    setMapView('2d');
+    setViewState({
+      longitude: MID_LNG,
+      latitude: MID_LAT,
+      zoom: 14,
+      pitch: 0,
+      bearing: 0,
+      transitionDuration: 1500,
+      transitionInterpolator: new FlyToInterpolator(),
+    } as MapViewState);
+
+    // t = 5 s : Avoid Sun filter
+    schedule(5_000, () => setFilterMode('avoid-sun'));
+
+    // t = 8 s : Cinematic 3D fly-over of the route
+    schedule(8_000, () => {
+      setViewState({
+        longitude: MID_LNG,
+        latitude: MID_LAT,
+        zoom: 17,
+        pitch: 55,
+        bearing: 20,
+        transitionDuration: 2500,
+        transitionInterpolator: new FlyToInterpolator(),
+      } as MapViewState);
+    });
+
+    // t = 13 s : Dark mode
+    schedule(13_000, () => setTheme('dark'));
+
+    // t = 16 s : Planned time = tomorrow 2 PM (glare hotspots show)
+    schedule(16_000, () => {
+      const tomorrow2pm = new Date();
+      tomorrow2pm.setDate(tomorrow2pm.getDate() + 1);
+      tomorrow2pm.setHours(14, 0, 0, 0);
+      setTimeMode('leave-at');
+      setPlannedTime(tomorrow2pm);
+    });
+
+    // t = 21 s : Avoid Wind filter
+    schedule(21_000, () => setFilterMode('avoid-wind'));
+
+    // t = 26 s : Back to light + 2D
+    schedule(26_000, () => {
+      setTheme('light');
+      setMapView('2d');
+    });
+
+    // t = 30 s : Type "I am walking in a suit" through Gemini
+    schedule(30_000, () => {
+      void handleSubmitPreference('I am walking in a suit');
+    });
+
+    // t = 35 s : Sunny Spot filter
+    schedule(35_000, () => setFilterMode('sunny-spot'));
+
+    // t = 40 s : Reset Leave now + No preference
+    schedule(40_000, () => {
+      setTimeMode('leave-now');
+      setPlannedTime(null);
+      setFilterMode('no-preference');
+    });
+
+    // t = 45 s : Done
+    schedule(45_000, () => {
+      setToastMessage('Demo complete');
+      setDemoRunning(false);
+      demoTimeoutsRef.current = [];
+    });
+  }, [handleSubmitPreference, setTheme]);
+
   // ---- live navigation derivations -----------------------------------
   // routeProgress / nextTurn / remaining-time recompute on every new
   // geolocation fix (typically once a second). Cheap helpers — no
@@ -1584,6 +1712,8 @@ export default function App() {
       </div>
       <Toast message={toastMessage} />
       <VersionLabel />
+      <DemoWatermark visible={isDemoMode} />
+      <DemoButton visible={isDemoMode && !demoRunning} onStart={runDemoSequence} />
     </div>
   ) : (
     // ─── MOBILE / NAVIGATION LAYOUT ────────────────────────────────
@@ -1594,6 +1724,8 @@ export default function App() {
       {renderMapAndSharedChrome()}
       <Toast message={toastMessage} />
       <VersionLabel />
+      <DemoWatermark visible={isDemoMode} />
+      <DemoButton visible={isDemoMode && !demoRunning} onStart={runDemoSequence} />
     </div>
   );
 }

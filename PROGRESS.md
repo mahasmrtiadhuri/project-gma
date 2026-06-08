@@ -3661,3 +3661,49 @@ Grepped + verified the features earlier sessions added are all still wired in Ap
 
 - `tsc -b` clean
 - `vite build` clean (~1.46 MB main chunk, CSS ~30.4 KB / gzip 6.9 KB, ~17 s). index.html 1.46 → 1.39 KB confirms the SW register script is no longer inlined.
+
+---
+
+## 2026-06-07 — Demo Mode for video recording
+
+Scripted 45 s end-to-end walkthrough that exercises every flagship feature in a deterministic order. Activates only when the URL contains `?demo=true` — the rest of the time the production app is unchanged.
+
+### Activation
+
+- **[src/hooks/useDemoMode.ts](src/hooks/useDemoMode.ts)** — single boolean state, reads `window.location.search.includes('demo=true')` on mount + listens for `popstate` so a back/forward across `?demo=true` flips the value reactively.
+- **[src/components/DemoWatermark.tsx](src/components/DemoWatermark.tsx)** — small red `● DEMO MODE` pill pinned top-left (z-250) whenever the URL has the flag. Tells anyone viewing the recording that the on-screen state is scripted, not live user input.
+- **[src/components/DemoButton.tsx](src/components/DemoButton.tsx)** — floating crimson "● Start Demo" pill at the bottom-center (z-300, above every other piece of chrome). Visible when demo mode is on and the sequence hasn't started yet.
+
+### Sequence — `runDemoSequence`
+
+Implemented in App.tsx as a single function that wipes any pending `setTimeout` IDs (stored in `demoTimeoutsRef`), schedules each step from t=0, and stores the new IDs for cleanup. Component unmount clears them via a one-time `useEffect` cleanup. Every step calls the same setter a normal user interaction would, so the demo is a real exercise of the full pipeline — no mocked state.
+
+| t (s) | Step |
+|---|---|
+| 0 | `setOrigin(Times Square)` + `setDestination(Grand Central)` (auto-fetches routes via existing effect) + `setMapView('2d')` + fly camera to mid-route at zoom 14, pitch 0, bearing 0 (1.5 s FlyToInterpolator) |
+| 5 | `setFilterMode('avoid-sun')` |
+| 8 | Cinematic 3D fly-over: zoom 17, pitch 55, bearing 20 (2.5 s FlyToInterpolator) |
+| 13 | `setTheme('dark')` |
+| 16 | `setTimeMode('leave-at')` + `setPlannedTime(tomorrow 2 PM)` — shows glass-glare hotspots at midday |
+| 21 | `setFilterMode('avoid-wind')` |
+| 26 | `setTheme('light')` + `setMapView('2d')` |
+| 30 | `handleSubmitPreference('I am walking in a suit')` — routes through Gemini, returns routing intent → updates filter + toast |
+| 35 | `setFilterMode('sunny-spot')` |
+| 40 | Reset to `leave-now` + `no-preference` |
+| 45 | `setToastMessage('Demo complete')` + `setDemoRunning(false)` — sequence ends, START DEMO re-appears |
+
+All filter / theme / time / view changes use the same flows as normal user interaction, so the demo gets the live Gemini call, the live Routes API, the live Solar API, the live METAR, etc. — what you see in the recording is what users see.
+
+### useTheme integration
+
+App.tsx's `useTheme` destructure now pulls `setTheme` too (previously only `toggle`) so the demo can move the theme directly (dark → light) rather than relying on toggle ordering.
+
+### Files touched
+
+- New: [src/hooks/useDemoMode.ts](src/hooks/useDemoMode.ts), [src/components/DemoButton.tsx](src/components/DemoButton.tsx), [src/components/DemoWatermark.tsx](src/components/DemoWatermark.tsx).
+- Updated: [src/App.tsx](src/App.tsx) — added imports, `useDemoMode` + `demoRunning` state + `demoTimeoutsRef` cleanup + `runDemoSequence` function, mounted `<DemoWatermark>` + `<DemoButton>` in both layout branches.
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.46 MB main chunk, ~14 s)
