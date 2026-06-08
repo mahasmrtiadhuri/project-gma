@@ -222,6 +222,14 @@ export interface GMACanvasProps {
    */
   sunnySpots?: ReadonlyArray<{ lat: number; lng: number }> | null;
   /**
+   * Glare-pulse phase, 0..1. Multiplied into the glare-hotspot radius
+   * as `1 + 0.4 * sin(phase * π)` so the dots inflate then deflate
+   * over the pulse window. Driven by App.tsx for ~600 ms at t=16 s
+   * in the demo sequence to draw the viewer's eye to the hotspots.
+   * 0 = baseline radius.
+   */
+  glarePulsePhase?: number;
+  /**
    * Active theme — drives map-overlay opacity. Light mode keeps overlays
    * subtle (so the white basemap stays readable); dark mode amplifies to
    * vivid (so the route + glare hotspots glow against the dark map).
@@ -246,6 +254,7 @@ export function GMACanvas({
   originPoint,
   destinationPoint,
   sunnySpots,
+  glarePulsePhase = 0,
   onMapTap,
 }: GMACanvasProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -381,22 +390,30 @@ export function GMACanvas({
     // sun rays from glass-clad buildings. Painted under the route
     // polyline so the route's deep-red glare segments stay visible.
     if (!navigating && glareHotspots && glareHotspots.length > 0) {
+      // Demo-driven pulse: scale 1 → ~1.4 → 1 across the 600 ms
+      // window. Outside the window glarePulsePhase is 0 and the
+      // multiplier resolves to 1 (no effect on the baseline radius).
+      const pulseMul = 1 + 0.4 * Math.sin(glarePulsePhase * Math.PI);
+      const baseRadius = isDark ? 22 : 15;
       out.push(
         new ScatterplotLayer<GlareHotspot>({
           id: 'glare-hotspots',
           data: glareHotspots,
           getPosition: (h) => [h.lng, h.lat],
           getFillColor: tintAlpha(GLARE_HOTSPOT_FILL),
-          // Dark mode bumps the dot radius too so it reads as a glowing
-          // marker, not just a tinted point.
-          getRadius: isDark ? 22 : 15,
+          getRadius: baseRadius * pulseMul,
           radiusUnits: 'meters',
-          radiusMinPixels: isDark ? 10 : 6,
-          radiusMaxPixels: isDark ? 38 : 28,
+          radiusMinPixels: Math.round((isDark ? 10 : 6) * pulseMul),
+          radiusMaxPixels: Math.round((isDark ? 38 : 28) * pulseMul),
           stroked: false,
           pickable: false,
           parameters: { depthCompare: 'always', depthWriteEnabled: false },
-          updateTriggers: { getPosition: glareHotspots },
+          updateTriggers: {
+            getPosition: glareHotspots,
+            // Re-render whenever the pulse phase ticks so the radius
+            // recomputes from the new multiplier.
+            getRadius: glarePulsePhase,
+          },
         }),
       );
     }
@@ -444,6 +461,12 @@ export function GMACanvas({
             jointRounded: true,
             pickable: false,
             parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            // 400 ms interpolation between color states so filter
+            // swaps (e.g. avoid-sun → avoid-wind) cross-fade the
+            // entire route polyline rather than snapping.
+            transitions: {
+              getColor: { duration: 400, type: 'interpolation' },
+            },
             updateTriggers: {
               getPath: coloredSegments,
               getColor: coloredSegments,
@@ -468,6 +491,9 @@ export function GMACanvas({
             highlightColor: [255, 255, 255, 60],
             autoHighlight: !navigating,
             parameters: { depthCompare: 'always', depthWriteEnabled: false },
+            transitions: {
+              getColor: { duration: 400, type: 'interpolation' },
+            },
             updateTriggers: {
               getPath: coloredSegments,
               getColor: coloredSegments,
@@ -653,6 +679,7 @@ export function GMACanvas({
     originPoint,
     destinationPoint,
     sunnySpots,
+    glarePulsePhase,
   ]);
 
   const getTooltip = useCallback(

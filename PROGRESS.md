@@ -3872,3 +3872,79 @@ The prior comfort badge for night was `{ text: 'No sun exposure · Night routing
 
 - `tsc -b` clean
 - `vite build` clean (~1.47 MB main chunk, CSS ~30.9 KB / gzip 7.0 KB, ~11 s)
+
+---
+
+## 2026-06-08 — Cinematic I/O-quality demo redesign + route color education
+
+10-item pass that turns the demo recording into a film cut and adds first-time-route legend education.
+
+### 1. New demo route
+
+**432 Park Avenue (40.7613, -73.9718) → Bryant Park (40.7536, -73.9832)**
+
+Selected because the corridor exercises every classifier branch in one 0.6 mi walk: 432 Park's glass facade casts glare hotspots, midday 5th-Ave segments classify direct sun, Bryant Park's tree edges trip the tree-canopy branch, and the side streets between offer building shadow. All four route colors (🟠 sunny, 🔵 building shade, 🟢 tree canopy, 🔴 glass glare) visible in a single demo run.
+
+### 2. Light-mode-only demo
+
+Demo sequence rewritten ([src/App.tsx](src/App.tsx) `runDemoSequence`). `setTheme('light')` at t=0 only, no dark-mode step. The prior t=30 dark-mode beat is replaced by the t=16 close-up + glare pulse described below.
+
+### 3. Cinematic intro
+
+[src/components/DemoIntroOverlay.tsx](src/components/DemoIntroOverlay.tsx) — full-screen white overlay, z-400, blocks pointer events, shows for 2 s (600 ms fade-in, 1 s hold, 400 ms fade-out). Title `Generative Micro-Climate Architect` (3xl/5xl Inter, slate-900, -0.02em tracking, line-height 1.1). Subtitle `Routing for how a city feels.` (slate-600, +0.01em tracking). 150 ms delay on the content's opacity + translateY so the overlay color settles before the type fades in.
+
+### 4. Progress bar
+
+[src/components/DemoProgressBar.tsx](src/components/DemoProgressBar.tsx) — 3 px amber line fixed at the top edge, z-350. Inner div mounts at `width: 0%` and transitions to `100%` over the full demo duration (60 000 ms linear) via a single inline-style transition fired in a `requestAnimationFrame` post-mount callback. `key={durationMs}` forces a fresh remount on each demo replay so the transition restarts cleanly from 0 %.
+
+### 5. Floating annotations
+
+[src/components/DemoAnnotation.tsx](src/components/DemoAnnotation.tsx) — white `rounded-full px-6 py-3` pill at z-360, `top: 70%` centered horizontally. Slate-800 Inter text. Slides up + fades in on mount (350 ms), holds 1.8 s, fades up + out on `setText(null)`. Driven by `demoAnnotation: string | null` state in App.tsx; the demo scheduler fires `setDemoAnnotation('...')` at each beat:
+
+| t (s) | Text |
+|---|---|
+| 5 | Standard Maps gives you the fastest route |
+| 10 | GMA shows you how it feels ☀️ |
+| 16 | Glass glare detected — +15°F on this sidewalk 🔆 |
+| 25 | GMA found a cooler path 🌳 |
+| 35 | Wind canyons avoided 🌬️ |
+| 40 | Find the sunniest spot ⭐ |
+| 45 | Natural language understood 🤖 |
+| 52 | Navigation begins — follow the comfortable path |
+
+### 6. Smooth camera transitions
+
+Every `setViewState` call in the demo uses `FlyToInterpolator` with `transitionDuration ≥ 2000 ms`. The follow-cam prime at t=52 was bumped 800 → 2000 ms.
+
+### 7. Glare hotspot pulse
+
+`GMACanvasProps.glarePulsePhase: number` (default 0). Glare hotspot ScatterplotLayer's radius now multiplied by `1 + 0.4 * Math.sin(phase * π)` — phase 0 → 1 traces a full pulse (1 → 1.4 → 1). `updateTriggers.getRadius: glarePulsePhase` ensures deck.gl re-renders when phase ticks.
+
+At t=16 s the demo schedules a 600 ms `requestAnimationFrame` loop that drives `glarePulsePhase` from 0 → 1, then settles back to 0 after a brief tail. Re-uses the `glarePulseRafRef` so it cancels cleanly on demo restart / unmount.
+
+### 8. Time scrubber auto-animation
+
+At t=20 s the demo runs an rAF loop that lerps `demoHour` from 8 to 14 over 3 s in integer steps. Each tick rewrites `effectiveTime`, which recomputes the full solar / coloring chain live — viewer watches the polyline colors shift between dawn and midday as the slider visually slides across the gradient track.
+
+### 9. Route color education
+
+[src/components/RouteLegendOverlay.tsx](src/components/RouteLegendOverlay.tsx) — two exports:
+
+- `<RouteLegendOverlay autoShow manualShow onDismiss>` — centered card just under the top, z-370. Lists 4 swatches with emoji + label (☀️ Direct sun / 🏢 Building shade / 🌳 Tree canopy / 🔆 Glass glare). 250 ms fade + translateY transitions.
+- `<RouteLegendButton visible onToggle>` — persistent circular `?` button bottom-left at `left: 16; bottom: calc(env+12rem); z: 50`. Visible whenever a colored route is on the map.
+
+App.tsx effect tracks "have we shown the legend for the current origin-destination pair yet" via `legendShownForRouteRef`. When a fresh route appears (new key), `legendAutoShow` flips true for 4 000 ms then auto-dismisses. The scheduler resets the ref at the start of each demo run so the legend re-shows even for the same route.
+
+### 10. Smooth filter transitions
+
+Both route PathLayers (`route-comfort-overlay-halo` + `route-comfort-overlay`) gained `transitions: { getColor: { duration: 400, type: 'interpolation' } }`. Filter swaps (avoid-sun → avoid-wind etc) now cross-fade the entire route polyline over 400 ms instead of snapping to the new palette.
+
+### Files touched
+
+- New: [src/components/DemoIntroOverlay.tsx](src/components/DemoIntroOverlay.tsx), [src/components/DemoProgressBar.tsx](src/components/DemoProgressBar.tsx), [src/components/DemoAnnotation.tsx](src/components/DemoAnnotation.tsx), [src/components/RouteLegendOverlay.tsx](src/components/RouteLegendOverlay.tsx).
+- Updated: [src/components/GMACanvas.tsx](src/components/GMACanvas.tsx) (glarePulsePhase + transitions), [src/App.tsx](src/App.tsx) (state, legend auto-show effect, runDemoSequence rewrite, mounts).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.48 MB main chunk, CSS ~31.9 KB / gzip 7.1 KB, ~14 s)

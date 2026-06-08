@@ -26,6 +26,13 @@ import { MapTapPopup } from './components/MapTapPopup';
 import { VersionLabel } from './components/VersionLabel';
 import { DemoButton } from './components/DemoButton';
 import { DemoWatermark } from './components/DemoWatermark';
+import { DemoIntroOverlay } from './components/DemoIntroOverlay';
+import { DemoProgressBar } from './components/DemoProgressBar';
+import { DemoAnnotation } from './components/DemoAnnotation';
+import {
+  RouteLegendOverlay,
+  RouteLegendButton,
+} from './components/RouteLegendOverlay';
 import { TimeScrubber } from './components/TimeScrubber';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useTheme } from './hooks/useTheme';
@@ -155,6 +162,40 @@ export default function App() {
   const [demoLiveCoord, setDemoLiveCoord] =
     useState<{ lat: number; lng: number } | null>(null);
   const demoNavRafRef = useRef<number | null>(null);
+
+  // Cinematic chrome state — driven entirely by the demo scheduler.
+  // `demoIntroVisible` covers the 2 s opening title card.
+  // `demoAnnotation` is the current voiceover-pill text (null hides).
+  // `glarePulsePhase` is the 0→1 sweep for the glare-hotspot pulse.
+  // `legendAutoShow` flips on for 4 s when a route first appears.
+  const [demoIntroVisible, setDemoIntroVisible] = useState(false);
+  const [demoAnnotation, setDemoAnnotation] = useState<string | null>(null);
+  const [glarePulsePhase, setGlarePulsePhase] = useState(0);
+  const glarePulseRafRef = useRef<number | null>(null);
+  const demoHourRafRef = useRef<number | null>(null);
+
+  // Legend overlay: shows for 4 s when a route first appears; also
+  // re-openable via the persistent "?" button bottom-left.
+  const [legendAutoShow, setLegendAutoShow] = useState(false);
+  const [legendManualShow, setLegendManualShow] = useState(false);
+  const legendAutoTimerRef = useRef<number | null>(null);
+  const legendShownForRouteRef = useRef<string | null>(null);
+
+  // Clear scheduled legend hide on unmount.
+  useEffect(
+    () => () => {
+      if (legendAutoTimerRef.current != null) {
+        window.clearTimeout(legendAutoTimerRef.current);
+      }
+      if (glarePulseRafRef.current != null) {
+        cancelAnimationFrame(glarePulseRafRef.current);
+      }
+      if (demoHourRafRef.current != null) {
+        cancelAnimationFrame(demoHourRafRef.current);
+      }
+    },
+    [],
+  );
 
   // Clear any pending scheduled steps + the nav-sim rAF on unmount so
   // a navigation away mid-demo doesn't fire setters against a dead
@@ -987,6 +1028,31 @@ export default function App() {
     glareHotspots,
   ]);
 
+  // Route-color legend auto-show — fires for the first 4 s after a
+  // route appears for a new origin↔destination pair. The "first time"
+  // guard uses a stable string key so subsequent re-runs (filter
+  // swaps, time scrubs) don't re-trigger.
+  useEffect(() => {
+    if (!coloredSegments || coloredSegments.length === 0) return;
+    const key = `${origin?.point.lat ?? ''},${origin?.point.lng ?? ''}|${destination?.point.lat ?? ''},${destination?.point.lng ?? ''}`;
+    if (legendShownForRouteRef.current === key) return;
+    legendShownForRouteRef.current = key;
+    setLegendAutoShow(true);
+    if (legendAutoTimerRef.current != null) {
+      window.clearTimeout(legendAutoTimerRef.current);
+    }
+    legendAutoTimerRef.current = window.setTimeout(() => {
+      setLegendAutoShow(false);
+      legendAutoTimerRef.current = null;
+    }, 4_000);
+  }, [
+    coloredSegments,
+    origin?.point.lat,
+    origin?.point.lng,
+    destination?.point.lat,
+    destination?.point.lng,
+  ]);
+
   // ---- auto-pan/zoom ----
   // Fits the map to the route the user actually has selected. Previously
   // this always fit to `result.routes[0]` (the best-under-current-filter),
@@ -1167,7 +1233,7 @@ export default function App() {
   // effect — no manual fetchCandidateRoutes call needed.
   const runDemoSequence = useCallback(() => {
     setDemoRunning(true);
-    // Wipe any leftover schedule before starting fresh.
+    // Wipe any leftover schedule + rAF handles before starting fresh.
     for (const id of demoTimeoutsRef.current) {
       window.clearTimeout(id);
     }
@@ -1176,28 +1242,45 @@ export default function App() {
       cancelAnimationFrame(demoNavRafRef.current);
       demoNavRafRef.current = null;
     }
+    if (glarePulseRafRef.current != null) {
+      cancelAnimationFrame(glarePulseRafRef.current);
+      glarePulseRafRef.current = null;
+    }
+    if (demoHourRafRef.current != null) {
+      cancelAnimationFrame(demoHourRafRef.current);
+      demoHourRafRef.current = null;
+    }
     setDemoLiveCoord(null);
+    setGlarePulsePhase(0);
+    setDemoAnnotation(null);
+    legendShownForRouteRef.current = null; // force legend to re-show
+
     const schedule = (delayMs: number, fn: () => void) => {
       const id = window.setTimeout(fn, delayMs);
       demoTimeoutsRef.current.push(id);
     };
 
-    const TIMES_SQUARE = { lat: 40.758, lng: -73.9855 };
-    const GRAND_CENTRAL = { lat: 40.7527, lng: -73.9772 };
-    const MID_LAT = (TIMES_SQUARE.lat + GRAND_CENTRAL.lat) / 2;
-    const MID_LNG = (TIMES_SQUARE.lng + GRAND_CENTRAL.lng) / 2;
+    // ─── Demo route: 432 Park Avenue → Bryant Park ─────────────
+    // This corridor passes glass towers (red glare), sunny avenues
+    // (orange), tree-lined park edges (green), and building shadows
+    // (blue) — all four classifier outputs in a single 0.6 mi walk.
+    const ORIGIN = { lat: 40.7613, lng: -73.9718 };
+    const DESTINATION = { lat: 40.7536, lng: -73.9832 };
+    const MID_LAT = (ORIGIN.lat + DESTINATION.lat) / 2;
+    const MID_LNG = (ORIGIN.lng + DESTINATION.lng) / 2;
 
-    // ─── t = 0s ───────────────────────────────────────────────
-    // Times Square → Grand Central, 2D mode, route shows immediately
-    // via the auto-fetch effect. Camera at zoom 15 so the colored
-    // segments read at-a-glance.
-    setOrigin({ point: TIMES_SQUARE, label: 'Times Square' });
-    setDestination({
-      point: GRAND_CENTRAL,
-      label: 'Grand Central Terminal',
-    });
+    // ─── Cinematic intro: 2 s white title card ─────────────────
+    // Title fades in over 600 ms, holds, fades out at t=1.6 s so
+    // by t=2 s the map is fully revealed for the rest of the
+    // sequence.
+    setDemoIntroVisible(true);
+    schedule(1_600, () => setDemoIntroVisible(false));
+
+    // ─── t = 0 s : seed route + reset chrome ────────────────────
+    setOrigin({ point: ORIGIN, label: '432 Park Avenue' });
+    setDestination({ point: DESTINATION, label: 'Bryant Park' });
     setMapView('2d');
-    setTheme('light');
+    setTheme('light'); // light mode for the entire demo
     setTimeMode('leave-now');
     setPlannedTime(null);
     setFilterMode('no-preference');
@@ -1205,108 +1288,117 @@ export default function App() {
       longitude: MID_LNG,
       latitude: MID_LAT,
       zoom: 15,
-      pitch: 0,
+      pitch: 30,
       bearing: 0,
-      transitionDuration: 1500,
+      transitionDuration: 2_000,
       transitionInterpolator: new FlyToInterpolator(),
     } as MapViewState);
 
-    // ─── t = 5s ───────────────────────────────────────────────
-    // Zoom IN to street level so the orange/blue segment colors
-    // become unmistakable.
+    // ─── t = 5 s : annotation — fastest framing ─────────────────
     schedule(5_000, () => {
+      setDemoAnnotation('Standard Maps gives you the fastest route');
+    });
+
+    // ─── t = 10 s : annotation + close-in zoom ──────────────────
+    schedule(10_000, () => {
+      setDemoAnnotation('GMA shows you how it feels ☀️');
       setViewState({
         longitude: MID_LNG,
         latitude: MID_LAT,
         zoom: 17,
-        pitch: 0,
+        pitch: 30,
         bearing: 0,
-        transitionDuration: 2500,
+        transitionDuration: 2_500,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
     });
 
-    // ─── t = 10s ──────────────────────────────────────────────
-    // Glare segment annotation. Toast surfaces the "+15°F" claim.
-    schedule(10_000, () => {
-      setToastMessage('🔆 Glass glare — +15°F felt temperature');
-    });
-
-    // ─── t = 15s ──────────────────────────────────────────────
-    // Activate Avoid Sun so the GMA Pick card with the comfort
-    // delta shows up alongside the Fastest card.
-    schedule(15_000, () => setFilterMode('avoid-sun'));
-
-    // ─── t = 20s ──────────────────────────────────────────────
-    // Move planned time to tomorrow 2 PM — the Solar API + sun
-    // azimuth recompute lit-glare hotspots over Midtown towers.
-    schedule(20_000, () => {
-      const tomorrow2pm = new Date();
-      tomorrow2pm.setDate(tomorrow2pm.getDate() + 1);
-      tomorrow2pm.setHours(14, 0, 0, 0);
-      setTimeMode('leave-at');
-      setPlannedTime(tomorrow2pm);
-    });
-
-    // ─── t = 25s ──────────────────────────────────────────────
-    // Close-up zoom to z=18 over the route — orange-vs-blue
-    // segment colors are unmistakable at this scale, and the
-    // glare hotspots (now visible from the 2pm planned time)
-    // sit right against the route. Toast surfaces the "+15°F"
-    // claim again so the recording's voiceover has a beat to
-    // call it out.
-    schedule(25_000, () => {
-      setMapView('2d');
+    // ─── t = 16 s : zoom into a glare hotspot + pulse ──────────
+    schedule(16_000, () => {
+      setDemoAnnotation(
+        'Glass glare detected — +15°F on this sidewalk 🔆',
+      );
       setViewState({
         longitude: MID_LNG,
         latitude: MID_LAT,
         zoom: 18,
-        pitch: 30,
-        bearing: 15,
-        transitionDuration: 2500,
+        pitch: 45,
+        bearing: 25,
+        transitionDuration: 2_500,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
-      setToastMessage('🔆 Glare zones glow — +15°F felt temperature');
+      // Pulse the glare-hotspot dots: scale 1 → ~1.4 → 1 over
+      // 600 ms via `glarePulsePhase` 0 → 1 → 0. Driven by rAF so
+      // it tracks frames cleanly.
+      const pulseStart = performance.now();
+      const pulseDuration = 600;
+      const pulseTick = (now: number) => {
+        const t = Math.min(1, (now - pulseStart) / pulseDuration);
+        setGlarePulsePhase(t);
+        if (t < 1) {
+          glarePulseRafRef.current = requestAnimationFrame(pulseTick);
+        } else {
+          glarePulseRafRef.current = null;
+          // Settle back to baseline.
+          window.setTimeout(() => setGlarePulsePhase(0), 50);
+        }
+      };
+      glarePulseRafRef.current = requestAnimationFrame(pulseTick);
     });
 
-    // ─── t = 30s ──────────────────────────────────────────────
-    // Dark mode — glare hotspots get their red glow shadow.
-    schedule(30_000, () => setTheme('dark'));
+    // ─── t = 20 s : auto-animate time scrubber 8 → 14 over 3 s ─
+    schedule(20_000, () => {
+      const startMs = performance.now();
+      const duration = 3_000;
+      const fromHour = 8;
+      const toHour = 14;
+      setDemoHour(fromHour);
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - startMs) / duration);
+        const hour = fromHour + (toHour - fromHour) * t;
+        setDemoHour(Math.round(hour));
+        if (t < 1) {
+          demoHourRafRef.current = requestAnimationFrame(tick);
+        } else {
+          demoHourRafRef.current = null;
+        }
+      };
+      demoHourRafRef.current = requestAnimationFrame(tick);
+    });
 
-    // ─── t = 35s ──────────────────────────────────────────────
-    // Avoid Wind — route polyline recolors emerald/violet.
-    schedule(35_000, () => setFilterMode('avoid-wind'));
+    // ─── t = 25 s : annotation — cooler path found ──────────────
+    schedule(25_000, () => {
+      setDemoAnnotation('GMA found a cooler path 🌳');
+      setFilterMode('avoid-sun');
+    });
 
-    // ─── t = 40s ──────────────────────────────────────────────
-    // Sunny Spot — yellow stars layered onto the sunny segments,
-    // light mode back so the stars read against a bright base.
+    // ─── t = 35 s : avoid wind ──────────────────────────────────
+    schedule(35_000, () => {
+      setDemoAnnotation('Wind canyons avoided 🌬️');
+      setFilterMode('avoid-wind');
+    });
+
+    // ─── t = 40 s : sunny spot ──────────────────────────────────
     schedule(40_000, () => {
-      setTheme('light');
-      setMapView('2d');
+      setDemoAnnotation('Find the sunniest spot ⭐');
       setFilterMode('sunny-spot');
     });
 
-    // ─── t = 45s ──────────────────────────────────────────────
-    // Conversational input → Gemini routing intent → filter swap
-    // plus toast confirmation.
+    // ─── t = 45 s : Gemini routing intent ───────────────────────
     schedule(45_000, () => {
+      setDemoAnnotation('Natural language understood 🤖');
       void handleSubmitPreference('I am walking in a suit');
     });
 
-    // ─── t = 52s ──────────────────────────────────────────────
-    // Start the simulated navigation. Mock GPS walks the polyline
-    // over 8 s; the chevron + follow-cam respect it via
-    // demoLiveCoord. Camera is zoomed in to z=18 with a 45° pitch
-    // for a true follow-cam feel — the existing follow-cam effect
-    // in App.tsx picks up the demoLiveCoord changes and tracks the
-    // chevron with the configured 500 ms transition.
+    // ─── t = 52 s : navigation simulation ───────────────────────
     schedule(52_000, () => {
+      setDemoAnnotation(
+        'Navigation begins — follow the comfortable path',
+      );
       if (!selectedRoute) return;
       const polyline = selectedRoute.polyline;
       if (polyline.length < 2) return;
       setNavigating(true);
-      // Prime the camera at the start of the route at z=18 pitch
-      // 45 so the follow-cam doesn't have to fly in from z=15.
       const first = polyline[0]!;
       setViewState({
         longitude: first.lng,
@@ -1314,7 +1406,7 @@ export default function App() {
         zoom: 18,
         pitch: 45,
         bearing: 0,
-        transitionDuration: 800,
+        transitionDuration: 2_000,
         transitionInterpolator: new FlyToInterpolator(),
       } as MapViewState);
       const startMs = performance.now();
@@ -1341,8 +1433,7 @@ export default function App() {
       demoNavRafRef.current = requestAnimationFrame(tick);
     });
 
-    // ─── t = 60s ──────────────────────────────────────────────
-    // Done. Clear the sim, exit navigation, surface the toast.
+    // ─── t = 60 s : done ────────────────────────────────────────
     schedule(60_000, () => {
       if (demoNavRafRef.current != null) {
         cancelAnimationFrame(demoNavRafRef.current);
@@ -1350,6 +1441,7 @@ export default function App() {
       }
       setDemoLiveCoord(null);
       setNavigating(false);
+      setDemoAnnotation(null);
       setToastMessage('Demo complete · Tap “Start Demo” to replay');
       setDemoRunning(false);
       demoTimeoutsRef.current = [];
@@ -1615,6 +1707,7 @@ export default function App() {
           selectedRoute || navigating ? destination?.point ?? null : null
         }
         sunnySpots={sunnySpots}
+        glarePulsePhase={glarePulsePhase}
         onMapTap={handleMapTap}
       />
 
@@ -1767,6 +1860,30 @@ export default function App() {
         hour={demoHour}
         onChange={setDemoHour}
       />
+
+      {/* Persistent "?" route-color legend button — bottom-left.
+       * Visible whenever a colored route is on the map so the user
+       * can recall the legend after the auto-show has faded. */}
+      <RouteLegendButton
+        visible={
+          !navigating &&
+          coloredSegments != null &&
+          coloredSegments.length > 0
+        }
+        onToggle={() => setLegendManualShow((v) => !v)}
+      />
+      <RouteLegendOverlay
+        autoShow={legendAutoShow}
+        manualShow={legendManualShow}
+        onDismiss={() => setLegendManualShow(false)}
+      />
+
+      {/* Demo cinematic chrome — progress bar at very top, voiceover
+       * pill at 70 % viewport height, intro title card. All gated on
+       * `?demo=true` so they never render outside demo runs. */}
+      <DemoProgressBar active={demoRunning} durationMs={60_000} />
+      <DemoAnnotation text={demoAnnotation} />
+      <DemoIntroOverlay visible={demoIntroVisible} />
 
       <MapViewSwitcher
         value={mapView}
