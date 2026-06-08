@@ -3816,3 +3816,59 @@ A big consolidation of small visual / layout fixes for the recording session.
 
 - `tsc -b` clean
 - `vite build` clean (~1.47 MB main chunk, CSS ~30.8 KB / gzip 6.95 KB, ~11 s)
+
+---
+
+## 2026-06-07 — Demo daytime lock, time scrubber, night-routing card
+
+Three changes that make the demo recording-resilient (locks to daytime regardless of when filmed) AND give it a hero moment (drag a time slider, watch the city's sun exposure shift live).
+
+### 1. Demo daytime lock + scrubber wiring
+
+[src/App.tsx](src/App.tsx) — `effectiveTime` now branches on `isDemoMode`:
+
+```ts
+if (isDemoModeForTime) {
+  const t = new Date(timestamp);
+  t.setHours(demoHour, 0, 0, 0);
+  return t;
+}
+```
+
+New `demoHour` state (default 14 = 2 PM). Anchors the solar position chain to today's date with the demo-selected hour, so the recording always shows vibrant amber/blue route colors and glass-glare hotspots regardless of when in the day the video is captured. The full chain — `solar.azimuthDeg/elevationDeg`, `daylight.color`, `buildingShadows`, `glareHotspots`, route + street coloring, comfort scoring — recomputes the moment `demoHour` changes.
+
+### 2. TimeScrubber component
+
+New [src/components/TimeScrubber.tsx](src/components/TimeScrubber.tsx):
+
+- Horizontal `<input type="range" min={6} max={22} step={1}>` inside a `.gma-card` rounded-2xl chrome at `bottom: calc(env+12rem)` (sits just above the SunCompass).
+- Label `Simulate time of day` on the left, current-hour chip on the right (amber-filled, white text). 12 AM / 12 PM / 10 PM tick labels under the slider.
+- Slider track gradient mirrors the day arc: deep blue dawn → amber midday → deep blue dusk — gives the user a visual cue where the most-sunny hours live.
+- Visible only when `isDemoMode && !navigating`. `onChange` writes straight to `setDemoHour`.
+
+Mounted in `renderMapAndSharedChrome()` so it appears on both mobile and desktop layouts. App.tsx wires `<TimeScrubber visible={isDemoMode && !navigating} hour={demoHour} onChange={setDemoHour} />`.
+
+### 3. Night-routing card styling
+
+The prior comfort badge for night was `{ text: 'No sun exposure · Night routing', color: var(--gma-text-secondary) }` — a grey chip on a white card that read as "broken" rather than "intentional".
+
+- **ComfortBadge type** ([src/components/RouteSheet.tsx](src/components/RouteSheet.tsx)) gained an optional `nightRouting?: boolean`.
+- **`comfortBadgeFor` night branch** now returns `{ text: '🌙 Night routing', color: 'rgba(255,255,255,0.92)', nightRouting: true }`.
+- **RouteCard** detects the flag and flips the whole card to a night palette:
+  - Background: `rgb(15, 23, 42)` (slate-900)
+  - Border: slate-700 (or `dayAccent` when selected)
+  - Left accent stripe: `rgb(5, 150, 105)` (emerald-600) — the moon "icon" accent
+  - Title text: `rgba(255,255,255,0.95)`
+  - Subtitle: `rgba(255,255,255,0.70)`
+  - Fastest pill: white-tint chip
+- Card body style refactored into a three-branch `if (isNight) / else if (selected) / else` to keep the override readable.
+
+### Files touched
+
+- New: [src/components/TimeScrubber.tsx](src/components/TimeScrubber.tsx).
+- Updated: [src/App.tsx](src/App.tsx) (demoHour state + effectiveTime override + TimeScrubber mount), [src/components/RouteSheet.tsx](src/components/RouteSheet.tsx) (ComfortBadge.nightRouting + RouteCard night palette).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.47 MB main chunk, CSS ~30.9 KB / gzip 7.0 KB, ~11 s)

@@ -731,34 +731,58 @@ function RouteCard({
   const km = (route.distanceMeters / 1000).toFixed(2);
   const min = Math.max(1, Math.round(route.durationSeconds / 60));
 
+  // Night-routing card override — when sun's below horizon, every
+  // sun-aware filter collapses to the same "no thermal differentiation"
+  // state. Instead of leaving the card looking broken (grey badge on
+  // white card), flip the whole card to slate-900 + white text so the
+  // night-routing posture reads as intentional. Selected state still
+  // shows the dayAccent ring.
+  const isNight = !!comfortBadge?.nightRouting;
+
+  // Card body style — three branches: night, selected, default.
+  let cardStyle: React.CSSProperties;
+  if (isNight) {
+    cardStyle = {
+      borderColor: selected ? dayAccent : 'rgb(30, 41, 59)',
+      background: 'rgb(15, 23, 42)', // slate-900
+      boxShadow: selected
+        ? `inset 0 0 0 1px ${dayAccent}, inset 4px 0 0 0 rgb(5, 150, 105)`
+        : 'inset 4px 0 0 0 rgb(5, 150, 105)', // emerald-600 left accent
+      color: 'rgba(255, 255, 255, 0.92)',
+    };
+  } else if (selected) {
+    cardStyle = {
+      borderColor: dayAccent,
+      background:
+        'color-mix(in srgb, var(--gma-surface) 80%, ' + dayAccent + ' 20%)',
+      boxShadow: `inset 0 0 0 1px ${dayAccent}, inset 4px 0 0 0 ${accentBorderLeft}`,
+    };
+  } else {
+    cardStyle = {
+      borderColor: 'var(--gma-border)',
+      backgroundImage:
+        variant === 'gma' || variant === 'combined'
+          ? `linear-gradient(180deg, color-mix(in srgb, var(--gma-surface) 90%, ${gmaAccent} 10%) 0%, var(--gma-surface) 100%)`
+          : 'linear-gradient(180deg, color-mix(in srgb, var(--gma-surface) 96%, transparent) 0%, var(--gma-surface) 100%)',
+      boxShadow: `inset 4px 0 0 0 ${accentBorderLeft}`,
+    };
+  }
+
+  // Night palette overrides for inner text + the Fastest pill.
+  const titleColor = isNight ? 'rgba(255, 255, 255, 0.95)' : 'var(--gma-text-primary)';
+  const subColor = isNight
+    ? 'rgba(255, 255, 255, 0.70)'
+    : 'var(--gma-text-secondary)';
+  const fastestBadgeBg = isNight ? 'rgba(255, 255, 255, 0.08)' : FASTEST_BADGE_BG;
+  const fastestBadgeFg = isNight ? 'rgba(255, 255, 255, 0.80)' : FASTEST_BADGE_FG;
+
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={selected}
       className="gma-lift flex min-h-[64px] w-full items-stretch gap-3 overflow-hidden rounded-xl border p-3 text-left"
-      style={
-        selected
-          ? {
-              borderColor: dayAccent,
-              background:
-                'color-mix(in srgb, var(--gma-surface) 80%, ' +
-                dayAccent +
-                ' 20%)',
-              boxShadow: `inset 0 0 0 1px ${dayAccent}, inset 4px 0 0 0 ${accentBorderLeft}`,
-            }
-          : {
-              borderColor: 'var(--gma-border)',
-              // Subtle top-to-bottom gradient on every card — adds
-              // depth without dominating. GMA/combined cards bias
-              // toward an amber wash; plain cards stay neutral.
-              backgroundImage:
-                variant === 'gma' || variant === 'combined'
-                  ? `linear-gradient(180deg, color-mix(in srgb, var(--gma-surface) 90%, ${gmaAccent} 10%) 0%, var(--gma-surface) 100%)`
-                  : 'linear-gradient(180deg, color-mix(in srgb, var(--gma-surface) 96%, transparent) 0%, var(--gma-surface) 100%)',
-              boxShadow: `inset 4px 0 0 0 ${accentBorderLeft}`,
-            }
-      }
+      style={cardStyle}
     >
       <div
         className="flex h-5 w-5 shrink-0 items-center justify-center self-center rounded-full border-2"
@@ -780,8 +804,8 @@ function RouteCard({
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
               style={{
-                background: FASTEST_BADGE_BG,
-                color: FASTEST_BADGE_FG,
+                background: fastestBadgeBg,
+                color: fastestBadgeFg,
               }}
             >
               Fastest
@@ -803,11 +827,17 @@ function RouteCard({
           )}
         </div>
         <div className="mt-1 flex items-baseline gap-2">
-          <span className="text-base text-[var(--gma-text-primary)]">
+          <span
+            className="text-base"
+            style={{ color: titleColor }}
+          >
             {min} min
           </span>
         </div>
-        <div className="mt-0.5 truncate text-xs text-[var(--gma-text-secondary)]">
+        <div
+          className="mt-0.5 truncate text-xs"
+          style={{ color: subColor }}
+        >
           {km} km · {route.label}
         </div>
         {explanation && (
@@ -888,6 +918,15 @@ interface ComfortBadge {
   text: string;
   /** Right-column text color — green for comfort, red for discomfort. */
   color: string;
+  /**
+   * Flips the rendering of the *whole* card to a dark slate-900
+   * background + white text + emerald moon icon. Used when the sun
+   * is below the horizon and every sun-aware filter collapses to
+   * the same "no thermal differentiation" message — the dark card
+   * communicates the night-routing state visually instead of just
+   * via the chip text.
+   */
+  nightRouting?: boolean;
 }
 
 function comfortBadgeFor(
@@ -908,8 +947,9 @@ function comfortBadgeFor(
     filterMode === 'no-preference';
   if (isNight && isSunAware) {
     return {
-      text: 'No sun exposure · Night routing',
-      color: 'var(--gma-text-secondary)',
+      text: '🌙 Night routing',
+      color: 'rgba(255, 255, 255, 0.92)',
+      nightRouting: true,
     };
   }
   // Wind filter — show mph avoided / wind state.

@@ -26,6 +26,7 @@ import { MapTapPopup } from './components/MapTapPopup';
 import { VersionLabel } from './components/VersionLabel';
 import { DemoButton } from './components/DemoButton';
 import { DemoWatermark } from './components/DemoWatermark';
+import { TimeScrubber } from './components/TimeScrubber';
 import { useDemoMode } from './hooks/useDemoMode';
 import { useTheme } from './hooks/useTheme';
 import { useSolarPosition } from './hooks/useSolarPosition';
@@ -321,10 +322,27 @@ export default function App() {
   // walk-time. The strict definition would be [plannedTime − walkDur,
   // plannedTime], but that introduces a circular dep (color → sort →
   // selection → duration). Fix later if it bites.
+  // Demo mode time scrubber — 6 AM → 10 PM. Defaults to 14 (2 PM)
+  // so the recording lands in vibrant orange/blue territory with
+  // glass glare hotspots visible. The TimeScrubber slider mutates
+  // this; effectiveTime below clamps the system clock to the
+  // demo hour when demo mode is active.
+  const isDemoModeForTime = isDemoMode;
+  const [demoHour, setDemoHour] = useState(14);
+
   const effectiveTime = useMemo(() => {
+    // Demo lock: anchor to today's date at `demoHour:00`. Locks the
+    // recording to a daytime sky regardless of when in the day the
+    // video is being captured, and lets the scrubber sweep the
+    // entire daylight band live.
+    if (isDemoModeForTime) {
+      const t = new Date(timestamp);
+      t.setHours(demoHour, 0, 0, 0);
+      return t;
+    }
     if (timeMode === 'leave-now' || !plannedTime) return timestamp;
     return plannedTime;
-  }, [timeMode, plannedTime, timestamp]);
+  }, [isDemoModeForTime, demoHour, timeMode, plannedTime, timestamp]);
 
   const solar = useSolarPosition(effectiveTime, NYC_CENTER.lat, NYC_CENTER.lng);
   const weather = useWeatherData(NYC_CENTER.lat, NYC_CENTER.lng);
@@ -1740,6 +1758,15 @@ export default function App() {
           routeSheetOpen={!useSidebar && sheetOpen}
         />
       )}
+
+      {/* Demo-only time scrubber. Lives just above the SunCompass.
+       * Dragging the slider rewrites `demoHour` → `effectiveTime`
+       * → entire solar / coloring chain recomputes live. */}
+      <TimeScrubber
+        visible={isDemoMode && !navigating}
+        hour={demoHour}
+        onChange={setDemoHour}
+      />
 
       <MapViewSwitcher
         value={mapView}
