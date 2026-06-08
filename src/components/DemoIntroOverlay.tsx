@@ -8,29 +8,37 @@ export interface DemoIntroOverlayProps {
 
 /**
  * Full-screen white overlay shown for the first ~2 s of every demo run.
- * Fades in over 400 ms, holds 1.2 s, fades out over 400 ms. While
- * visible, blocks all pointer interaction so the user can't accidentally
- * drive the map before the scripted sequence takes over.
+ * Fades in over 400 ms, holds, fades out over 400 ms. Blocks pointer
+ * interaction ONLY while actually visible — during fade-out and when
+ * not in use it returns null entirely so it never traps clicks.
  *
- * Title typography is plain Inter — large, slightly tightened tracking
- * so it reads as a film card rather than a UI label. Subtitle is the
- * pitch in one breath.
+ * Prior bug: the overlay's initial `useEffect` set stage to 'out'
+ * even when `visible` was false on mount. The early-return guard
+ * `!visible && stage === 'hidden'` then no longer matched, so the
+ * overlay rendered invisibly at `opacity: 0` BUT with `pointer-
+ * events-auto fixed inset-0 z-400`, swallowing every click on the
+ * page (including the Start Demo button itself). The fix below
+ * unmounts whenever `visible` is false — there's no fade-out
+ * animation any more, but the cinematic intro lands the same way:
+ * a clean cut to the map after the 2 s title hold.
  */
 export function DemoIntroOverlay({ visible }: DemoIntroOverlayProps) {
-  // Stage transitions: 'hidden' → 'fading-in' → 'visible' → 'fading-out'.
-  // Drives the opacity + translate transforms below.
-  const [stage, setStage] = useState<'hidden' | 'in' | 'out'>('hidden');
+  const [stage, setStage] = useState<'hidden' | 'in'>('hidden');
 
   useEffect(() => {
-    if (visible) {
-      // Start fade-in immediately on mount.
-      setStage('in');
-    } else {
-      setStage('out');
+    if (!visible) {
+      setStage('hidden');
+      return;
     }
+    // Defer the opacity transition by one frame so the browser
+    // registers the initial opacity-0 mount style before flipping
+    // to opacity-1 — otherwise the fade-in collapses to an instant
+    // appear.
+    const raf = requestAnimationFrame(() => setStage('in'));
+    return () => cancelAnimationFrame(raf);
   }, [visible]);
 
-  if (!visible && stage === 'hidden') return null;
+  if (!visible) return null;
 
   return (
     <div

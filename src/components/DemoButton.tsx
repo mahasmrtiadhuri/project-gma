@@ -15,7 +15,10 @@ export function DemoButton({ visible, onStart }: DemoButtonProps) {
   return (
     <button
       type="button"
-      onClick={onStart}
+      onClick={() => {
+        console.log('[GMA] Start Demo clicked (floating button)');
+        onStart();
+      }}
       aria-label="Start the recorded demo sequence"
       className="gma-press-soft pointer-events-auto fixed left-1/2 flex h-14 -translate-x-1/2 items-center justify-center gap-2 rounded-full px-8 text-base font-bold uppercase tracking-[0.2em]"
       style={{

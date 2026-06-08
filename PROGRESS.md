@@ -3948,3 +3948,57 @@ Both route PathLayers (`route-comfort-overlay-halo` + `route-comfort-overlay`) g
 
 - `tsc -b` clean
 - `vite build` clean (~1.48 MB main chunk, CSS ~31.9 KB / gzip 7.1 KB, ~14 s)
+
+---
+
+## 2026-06-08 — Start Demo button unresponsive: fixed invisible click-blocker
+
+### Symptom
+
+User reported: Start Demo button visible but clicking does nothing — no console logs, no map state change, no demo sequence playback.
+
+### Root cause
+
+The `DemoIntroOverlay` introduced in the prior pass had a stale-stage bug. Its initial `useEffect` ran `setStage('out')` whenever `visible` was false on mount. After that transition the early-return guard `!visible && stage === 'hidden'` no longer matched, so the component fell through to its main render branch. That branch emits:
+
+```tsx
+<div
+  className="pointer-events-auto fixed inset-0 ..."
+  style={{ zIndex: 400, background: '#ffffff', opacity: 0, ... }}
+/>
+```
+
+A full-screen `opacity: 0` div at `z-400` with `pointer-events-auto`. Invisible, but it covers the entire viewport and swallows every click — including the Start Demo button itself, the sidebar Start Demo button, and every other interactive element. Demo "doesn't start" because nothing on the page can be clicked.
+
+### Fix
+
+[src/components/DemoIntroOverlay.tsx](src/components/DemoIntroOverlay.tsx):
+
+- Dropped the `'out'` stage; the enum is now just `'hidden' | 'in'`.
+- Early return `if (!visible) return null;` — the overlay is fully unmounted whenever the demo isn't active, so it cannot intercept clicks.
+- `useEffect` now `setStage('hidden')` when `visible=false` (resets after a demo run), and uses a single-frame `requestAnimationFrame` to flip to `'in'` when `visible=true` so the opacity transition still fires.
+
+Trade-off: no fade-out animation (was 400 ms before). The intro now cuts cleanly when the 1.6 s timer fires, which is actually closer to the "film card to map" feel the spec was aiming for.
+
+### Diagnostic logging (per spec)
+
+- [src/hooks/useDemoMode.ts](src/hooks/useDemoMode.ts) — logs `[GMA] useDemoMode mounted { isDemoMode, search }` on mount, and `[GMA] useDemoMode popstate { isDemoMode }` on URL changes.
+- [src/components/DemoButton.tsx](src/components/DemoButton.tsx) — onClick wrapper logs `[GMA] Start Demo clicked (floating button)`.
+- [src/App.tsx](src/App.tsx) sidebar button — onClick wrapper logs `[GMA] Start Demo clicked (sidebar button)`.
+- `runDemoSequence` first line — logs `[GMA] Demo sequence starting`.
+
+If a user reports the button unresponsive again, the expected console output on click is:
+```
+[GMA] Start Demo clicked (sidebar button)    ← or (floating button)
+[GMA] Demo sequence starting
+```
+Missing the first line = something else is blocking the click (z-index, pointer-events, disabled state). Missing the second line = the click handler fired but the callback reference is broken.
+
+### Files touched
+
+- Updated: [src/components/DemoIntroOverlay.tsx](src/components/DemoIntroOverlay.tsx) (stage simplification + always-unmount when hidden), [src/components/DemoButton.tsx](src/components/DemoButton.tsx) (click log), [src/hooks/useDemoMode.ts](src/hooks/useDemoMode.ts) (mount + popstate logs), [src/App.tsx](src/App.tsx) (sidebar click log + runDemoSequence log).
+
+### Build
+
+- `tsc -b` clean
+- `vite build` clean (~1.48 MB main chunk, ~28 s)

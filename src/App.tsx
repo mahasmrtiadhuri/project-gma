@@ -1232,6 +1232,7 @@ export default function App() {
   // fetches from the existing `[origin, destination, travelMode]`
   // effect — no manual fetchCandidateRoutes call needed.
   const runDemoSequence = useCallback(() => {
+    console.log('[GMA] Demo sequence starting');
     setDemoRunning(true);
     // Wipe any leftover schedule + rAF handles before starting fresh.
     for (const id of demoTimeoutsRef.current) {
@@ -1929,7 +1930,10 @@ export default function App() {
         {isDemoMode && !demoRunning && (
           <button
             type="button"
-            onClick={runDemoSequence}
+            onClick={() => {
+              console.log('[GMA] Start Demo clicked (sidebar button)');
+              runDemoSequence();
+            }}
             className="gma-press flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold uppercase tracking-[0.18em]"
             style={{
               background: 'rgba(30, 41, 59, 0.06)',
