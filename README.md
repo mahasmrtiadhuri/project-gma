@@ -237,10 +237,6 @@ The chat handler forward-geocodes both queries in parallel, fires `setOrigin` + 
 
 ## Author
 
-**Maha Smrti Adhuri** — [mahasmrtiadhuri@gmail.com](mailto:mahasmrtiadhuri@gmail.com) · [LinkedIn](https://www.linkedin.com/in/maha-smrti-adhuri/)
+**Mahasmrti Adhuri** — [mahasmrtiadhuri@gmail.com](mailto:mahasmrtiadhuri@gmail.com) · [LinkedIn](https://www.linkedin.com/in/mahasmrti-adhuri/)
 
-Open to senior software / 3D graphics / geospatial / AI-product engineering roles. Especially interested in teams shipping consumer mapping, urban-tech, or simulation tooling.
 
----
-
-_Built for the Google Maps Platform Developer Community Day — NYC, June 10, 2026._
