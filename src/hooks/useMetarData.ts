@@ -95,14 +95,12 @@ function ensurePolling(): void {
   pollTimerId = window.setInterval(() => {
     void dedupedFetch();
   }, POLL_INTERVAL_MS);
-  console.log('[GMA] METAR polling started (30 min interval)');
 }
 
 function maybeStopPolling(): void {
   if (subscribers.size === 0 && pollTimerId !== null) {
     window.clearInterval(pollTimerId);
     pollTimerId = null;
-    console.log('[GMA] METAR polling stopped (no subscribers)');
   }
 }
 
@@ -140,15 +138,6 @@ async function fetchMetar(): Promise<MetarSnapshot | null> {
       meanCoverPct,
       fetchedAt: new Date(),
     };
-    console.log('[GMA] METAR snapshot', {
-      stations: reports.map((r) => ({
-        id: r.stationId,
-        clouds: r.clouds,
-        fractionalCover: Number(r.fractionalCover.toFixed(2)),
-        lowestBaseFt: r.lowestBaseFt,
-      })),
-      meanCoverPct,
-    });
     return snapshot;
   } catch (err) {
     console.warn('[GMA] METAR fetch threw:', err);

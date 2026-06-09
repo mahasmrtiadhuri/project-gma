@@ -274,47 +274,6 @@ export function colorizeRoute(
     });
   }
 
-  const total = segments.length;
-  if (isRainFilter) {
-    console.log('[GMA] Route coloring sources (rain)', {
-      segments: total,
-      exposed: precipExposedCount,
-      sheltered: total - precipExposedCount,
-      precipProbability: Math.round(precipitationProbability),
-      precipitationType,
-      windFrom: Math.round(windFromDeg),
-      precipFactor: Number(precipFactor.toFixed(2)),
-    });
-  } else if (isWindFilter) {
-    console.log('[GMA] Route coloring sources (wind)', {
-      segments: total,
-      headwind: windHeadwindCount,
-      sheltered: total - windHeadwindCount,
-      canyonSegments: windCanyonCount,
-      windFrom: Math.round(windFromDeg),
-      windMph: Number(windSpeedMph.toFixed(1)),
-      windIntensity: Number(windIntensity.toFixed(2)),
-    });
-  } else {
-    console.log('[GMA] Route coloring sources (sun)', {
-      segments: total,
-      glare: glareCount,
-      buildingShadow: shadowedCount,
-      treeCanopy: treeShadedCount,
-      // Surface the raw tree-input count too — if the Overpass fetch
-      // returns 0 trees we'll see treesAvailable=0 above the
-      // treeCanopy=0 line, making it obvious that the canopy
-      // classifier isn't broken; the upstream data is just missing.
-      treesAvailable: trees?.length ?? 0,
-      solarApi: usedSolarCount,
-      bearingFallback: usedBearingCount,
-      solarCoverage:
-        total > 0
-          ? `${Math.round((100 * usedSolarCount) / total)}% via Solar API`
-          : '0%',
-    });
-  }
-
   return segments;
 }
 

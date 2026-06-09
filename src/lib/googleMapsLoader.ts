@@ -150,7 +150,6 @@ function bootstrap(apiKey: string): Promise<void> {
     );
 
     script.onload = () => {
-      console.log('[GMA] Maps script onload fired');
       if (isMapsReady()) {
         resolve();
       } else {

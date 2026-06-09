@@ -17,7 +17,7 @@
 //                              in the response (the public API doesn't
 //                              expose a direct height, so we look at
 //                              `buildingStats.buildingHeight` first per
-//                              CLAUDE.md and fall back to null when absent)
+//                              PROJECT.md and fall back to null when absent)
 //   - buildingPolygon        — bbox-derived rectangle in [lng,lat] order,
 //                              used as a synthetic shadow-projection
 //                              input alongside OSM buildings
@@ -158,13 +158,6 @@ export function useSolarAPI(
     }
 
     setData((prev) => ({ ...prev, loading: true, status: 'loading' }));
-
-    console.log('[GMA] Solar API: sampling candidates', {
-      candidatePolylines: nonTrivial.length,
-      uniqueSamples: allPoints.length,
-      intervalM: SAMPLE_INTERVAL_M,
-      cappedAt: MAX_SAMPLES_PER_BATCH,
-    });
 
     Promise.all(allPoints.map((p) => fetchSampleCached(p.lat, p.lng)))
       .then((results) => {
@@ -319,7 +312,7 @@ function parseSolarResponse(
     );
   }
 
-  // Height: CLAUDE.md spec mentions `buildingStats.buildingHeight`. The
+  // Height: PROJECT.md spec mentions `buildingStats.buildingHeight`. The
   // public Solar API schema doesn't expose that directly, so we look in
   // several plausible places and fall back to null. When null the existing
   // OSM-derived height is used in projectShadows.
@@ -465,7 +458,7 @@ interface SolarApiResponse {
     ne?: { latitude?: number; longitude?: number };
   };
   /**
-   * Per CLAUDE.md, the spec calls for `buildingStats.buildingHeight`. The
+   * Per PROJECT.md, the spec calls for `buildingStats.buildingHeight`. The
    * current public Solar API doesn't expose that field, but we still look
    * for it (along with a couple of likely alternates) so the integration
    * picks it up if Google ever ships it. Falls back to null otherwise.

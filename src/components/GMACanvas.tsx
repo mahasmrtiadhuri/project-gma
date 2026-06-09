@@ -469,18 +469,6 @@ export function GMACanvas({
     // single solid color would be substituted.
     if (selectedRoute && selectedRoute.polyline.length >= 2) {
       if (coloredSegments && coloredSegments.length > 0) {
-        const sunnyCount = coloredSegments.filter((s) => s.reason === 'sunny').length;
-        const treeCount = coloredSegments.filter((s) => s.reason === 'tree-canopy').length;
-        const shadedCount = coloredSegments.length - sunnyCount - treeCount;
-        console.log('[GMA] Route polyline:', {
-          mode: navigating ? 'navigation' : 'selection',
-          points: selectedRoute.polyline.length,
-          coloredSegments: coloredSegments.length,
-          sunny: sunnyCount,
-          treeCanopy: treeCount,
-          shaded: shadedCount,
-          widthPx: navigating ? 12 : 8,
-        });
         // Outer glow halo — wider, lower-opacity copy of the same
         // per-segment color stack drawn UNDERNEATH the crisp route
         // line. Reads as a Google-Maps-style soft bloom around the

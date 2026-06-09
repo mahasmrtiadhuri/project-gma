@@ -62,7 +62,6 @@ export function useLiveLocation(enabled: boolean): LiveLocation {
     }
 
     setState((prev) => ({ ...prev, status: 'requesting' }));
-    console.log('[GMA] Live location: requesting permission + first fix…');
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {

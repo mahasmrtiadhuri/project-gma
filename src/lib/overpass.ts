@@ -188,16 +188,6 @@ async function fetchWithBackoff(
     ');' +
     'out geom;';
 
-  console.log('[GMA] Fetching Overpass data', {
-    url: OVERPASS_URL,
-    bbox,
-    bboxKey: bboxKey(bbox),
-    querySize: query.length,
-  });
-  // Full query body, on its own log line so it can be copy-pasted into
-  // overpass-turbo.eu for verification.
-  console.log('[GMA] Overpass query →\n' + query);
-
   for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
     const delay = RETRY_DELAYS_MS[attempt]!;
     if (delay > 0) {

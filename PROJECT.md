@@ -308,7 +308,7 @@ project-gma/
 │   │   └── a2uiClient.ts          # A2UI + Gemini integration
 │   └── styles/
 │       └── globals.css            # CSS variables, base styles
-├── CLAUDE.md
+├── PROJECT.md
 ├── vite.config.ts
 ├── tsconfig.json
 └── package.json
@@ -316,17 +316,15 @@ project-gma/
 
 ---
 
-## 12. What Claude Code Should Know
+## 12. Engineering Conventions
 
-- This is a fresh repo. Do NOT carry over any code from the Aura v1 PWA. No acoustic layer, no Web Audio API, no dB badge.
-- Build mobile-first. Demo runs on a phone.
-- deck.gl + Tile3DLayer is the map foundation — not Leaflet, not Google Maps JS API directly.
+- Fresh repo — no carryover code from earlier PWA experiments.
+- Mobile-first; the demo runs on a phone.
+- deck.gl + Tile3DLayer is the map foundation (not Leaflet, not Google Maps JS API directly).
 - GLSL shaders go in `src/lib/shaders/` as separate `.glsl` files, imported via vite-plugin-glsl.
-- All physics runs client-side. No backend server.
-- A2UI is experimental (v0.8). If the npm package doesn't exist yet, implement the conversational layer using Gemini API directly with a chat UI, and note it as an A2UI placeholder.
+- All physics runs client-side. The only server-side hop is the Solar API proxy (Netlify Function) that hides the API key for that one CORS-blocked endpoint.
 - TypeScript strict mode on. No `any` types.
-- Commit after each phase is complete.
-- Target 60 FPS on mobile — use bounding box viewport culling from day one on tile loading.
+- Target 60 FPS on mobile — bounding-box viewport culling on tile loading from day one.
 
 ---
 

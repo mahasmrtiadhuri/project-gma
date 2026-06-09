@@ -930,7 +930,7 @@ function FilterPill({ active, accent, label, onClick }: FilterPillProps) {
 // ---------- "feels like" comfort display helpers -----------------------
 //
 // Replaces the abstract `67% COOLER` badge with human-readable feels-like
-// text per CLAUDE.md §1 (glass-glare claim of up to +15°F felt
+// text per PROJECT.md §1 (glass-glare claim of up to +15°F felt
 // temperature). Sun routes report `~X°F cooler` / `~X°F warmer`; wind
 // routes report avoided headwind in mph; rain routes report a verbal
 // shelter state. All three keep their qualitative condition chip below

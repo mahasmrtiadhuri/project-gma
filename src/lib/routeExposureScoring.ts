@@ -161,7 +161,7 @@ export interface RouteWindExposureResult {
 
 /**
  * Walk the route polyline by WIND_SAMPLE_STEP_M chunks (≈ 100 m per
- * CLAUDE.md §4 Module B). For each chunk compute the wind facing and
+ * PROJECT.md §4 Module B). For each chunk compute the wind facing and
  * Venturi amplifier; combine into a 0..1 exposure scalar. Length-weight
  * the average so a long east-facing stretch in a canyon outweighs a
  * 30 m kink on a side street.
@@ -196,7 +196,7 @@ export function sampleRouteWindExposure(
     const segLengthM = haversineMeters(a.lng, a.lat, b.lng, b.lat);
     if (segLengthM < 0.5) continue;
 
-    // Per CLAUDE.md, sample every 100 m. For short OSM segments (most
+    // Per PROJECT.md, sample every 100 m. For short OSM segments (most
     // are < 100 m) the segment IS the sample; for longer ones we just
     // weight by their full length without further subdivision — the
     // bearing doesn't vary within a straight Routes-API segment.

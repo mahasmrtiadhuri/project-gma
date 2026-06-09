@@ -1,6 +1,6 @@
 // Glass building glare — the specular solar reflection from skyscrapers
 // that turns specific sidewalk coordinates into thermal hot spots
-// (~+15°F "feels like" per CLAUDE.md §1).
+// (~+15°F "feels like" per PROJECT.md §1).
 //
 // Two stages:
 //

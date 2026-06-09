@@ -259,13 +259,6 @@ export async function interpretPreference(
     },
   };
 
-  console.log('[GMA] Gemini: interpreting preference', {
-    input: trimmed,
-    contextTempF: context.weather?.temperatureF,
-    contextWindMph: context.weather?.windSpeedMph,
-    contextCloudPct: context.cloudCoverPct,
-  });
-
   try {
     const response = await fetch(
       `${ENDPOINT}?key=${encodeURIComponent(apiKey)}`,
@@ -309,7 +302,6 @@ export async function interpretPreference(
       console.warn('[GMA] Gemini: response did not match schema', parsed);
       return null;
     }
-    console.log('[GMA] Gemini response:', { input: trimmed, output: result });
     return result;
   } catch (error) {
     console.warn('[GMA] Gemini call threw:', error);

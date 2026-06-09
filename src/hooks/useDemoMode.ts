@@ -15,18 +15,9 @@ export function useDemoMode(): boolean {
   const [isDemoMode, setIsDemoMode] = useState(() => readFromUrl());
 
   useEffect(() => {
-    console.log('[GMA] useDemoMode mounted', {
-      isDemoMode,
-      search: typeof window !== 'undefined' ? window.location.search : '(ssr)',
-    });
-    const handler = () => {
-      const next = readFromUrl();
-      console.log('[GMA] useDemoMode popstate', { isDemoMode: next });
-      setIsDemoMode(next);
-    };
+    const handler = () => setIsDemoMode(readFromUrl());
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return isDemoMode;

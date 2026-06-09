@@ -1,4 +1,4 @@
-// Venturi wind-canyon amplification — per CLAUDE.md §4 Module B.
+// Venturi wind-canyon amplification — per PROJECT.md §4 Module B.
 //
 //   v_local = v_ambient × (W_entry / W_canyon)
 //

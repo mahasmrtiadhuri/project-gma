@@ -142,7 +142,6 @@ export async function fetchCandidateRoutes(
     //    to 3 alternatives if they exist. For short walks or very direct
     //    paths it often returns only 1.
     const direct = await fetchRoutesApi(origin, destination, travelMode, apiKey);
-    console.log(`[GMA] Routes API direct: ${direct.length} route(s)`);
 
     let all: CandidateRoute[] = [...direct];
 
@@ -158,7 +157,6 @@ export async function fetchCandidateRoutes(
         travelMode,
         apiKey,
       );
-      console.log(`[GMA] Detour alternatives: ${detours.length} route(s)`);
       all = [...all, ...detours];
     }
 
@@ -166,7 +164,6 @@ export async function fetchCandidateRoutes(
     //    distance/duration differ by < 10% — those are effectively the
     //    same path.
     const unique = dedupeRoutes(all);
-    console.log(`[GMA] After dedup: ${unique.length} unique route(s)`);
 
     // 4) Cap at 3 so the sheet doesn't get crowded.
     const final = unique.slice(0, 3);

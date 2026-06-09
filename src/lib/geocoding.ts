@@ -11,7 +11,6 @@ export async function reverseGeocode(
 ): Promise<string | null> {
   const fromGoogle = await tryGoogleGeocode(lat, lng, apiKey);
   if (fromGoogle) return fromGoogle;
-  console.log('[GMA] Google geocoding returned null; trying Nominatim fallback');
   return tryNominatim(lat, lng);
 }
 
@@ -30,8 +29,6 @@ async function tryGoogleGeocode(
     `?latlng=${lat},${lng}` +
     `&key=${encodeURIComponent(apiKey)}`;
 
-  console.log(`[GMA] Google reverse-geocoding ${lat.toFixed(4)}, ${lng.toFixed(4)}…`);
-
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -43,9 +40,6 @@ async function tryGoogleGeocode(
       return null;
     }
     const json = (await response.json()) as GoogleGeocodeResponse;
-    console.log(
-      `[GMA] Google Geocoding status=${json.status ?? '(none)'}, results=${json.results?.length ?? 0}`,
-    );
 
     if (json.status && json.status !== 'OK') {
       // REQUEST_DENIED with a "not authorized" / "not enabled" message is
@@ -78,7 +72,6 @@ async function tryGoogleGeocode(
       return null;
     }
 
-    console.log('[GMA] Google geocoded:', top.formatted_address);
     return top.formatted_address;
   } catch (error) {
     console.warn('[GMA] Google reverse geocoding fetch failed:', error);
@@ -94,8 +87,6 @@ async function tryNominatim(lat: number, lng: number): Promise<string | null> {
     'https://nominatim.openstreetmap.org/reverse' +
     `?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0`;
 
-  console.log(`[GMA] Nominatim reverse-geocoding ${lat.toFixed(4)}, ${lng.toFixed(4)}…`);
-
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -107,7 +98,6 @@ async function tryNominatim(lat: number, lng: number): Promise<string | null> {
       console.warn('[GMA] Nominatim returned no display_name');
       return null;
     }
-    console.log('[GMA] Nominatim geocoded:', json.display_name);
     return json.display_name;
   } catch (error) {
     console.warn('[GMA] Nominatim fetch failed:', error);
@@ -187,8 +177,6 @@ async function tryGoogleForward(
     '&region=us' +
     `&key=${encodeURIComponent(apiKey)}`;
 
-  console.log(`[GMA] Google forward-geocoding "${augmented}"…`);
-
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -209,9 +197,6 @@ async function tryGoogleForward(
       console.warn('[GMA] Google forward geocoding returned no location');
       return null;
     }
-    console.log(
-      `[GMA] Google forward geocoded "${query}" → ${top.formatted_address} (${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)})`,
-    );
     return {
       lat: loc.lat,
       lng: loc.lng,
@@ -234,7 +219,6 @@ async function tryNominatimForward(
     `?format=json&q=${encodeURIComponent(augmented)}&limit=1` +
     `&viewbox=${NYC_BIAS.west},${NYC_BIAS.north},${NYC_BIAS.east},${NYC_BIAS.south}` +
     '&bounded=1';
-  console.log(`[GMA] Nominatim forward-geocoding "${augmented}"…`);
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -250,9 +234,6 @@ async function tryNominatimForward(
     const lat = parseFloat(top.lat);
     const lng = parseFloat(top.lon);
     if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
-    console.log(
-      `[GMA] Nominatim forward "${query}" → ${top.display_name ?? '(no name)'} (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
-    );
     return {
       lat,
       lng,

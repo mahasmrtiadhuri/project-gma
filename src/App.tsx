@@ -265,10 +265,9 @@ export default function App() {
   // version chip in the bottom-right corner of the screen and the
   // deploy log).
   useEffect(() => {
-    console.log(`[GMA] Build date: ${__GMA_BUILD_DATE__}`);
-    console.log('[GMA] Feature: current location button mounted');
-    console.log('[GMA] Feature: map tap handler active');
-    console.log('[GMA] Feature: sunny spot filter available');
+    // Single deploy-version line, useful when verifying which build is
+    // running. Everything else logs only on warn/error.
+    console.log(`GMA build ${__GMA_BUILD_DATE__}`);
   }, []);
 
   // Desktop / mobile breakpoint. ≥ 768 px gets the dedicated 380 px
@@ -474,25 +473,6 @@ export default function App() {
     return { progress, phase, color };
   }, [sunTimes, effectiveTime]);
 
-  useEffect(() => {
-    if (!sunTimes) {
-      console.log('[GMA] Daylight: polar edge case (no sunrise/sunset)');
-      return;
-    }
-    console.log('[GMA] Daylight:', {
-      source: sunTimes.source,
-      timeMode,
-      plannedTime: plannedTime?.toISOString() ?? null,
-      effectiveTime: effectiveTime.toISOString(),
-      sunrise: sunTimes.times.sunrise.toISOString(),
-      sunset: sunTimes.times.sunset.toISOString(),
-      progress: daylight.progress.toFixed(3),
-      phase: daylight.phase,
-      color: daylight.color,
-      apiIsDaytime: weather?.isDaytime,
-    });
-  }, [sunTimes?.source, daylight.phase, timeMode, plannedTime]);
-
   // ---- origin auto-fill ----
   useEffect(() => {
     if (location.status !== 'available' || !location.point) return;
@@ -504,11 +484,6 @@ export default function App() {
         if (current) return current;
         const label =
           address ?? `${point.lat.toFixed(4)}°, ${point.lng.toFixed(4)}°`;
-        console.log('[GMA] Auto-filling origin from geolocation:', {
-          point,
-          label,
-          usedGeocoded: address !== null,
-        });
         return { point, label };
       });
     });
@@ -516,13 +491,6 @@ export default function App() {
       cancelled = true;
     };
   }, [location.status, location.point?.lat, location.point?.lng, apiKey]);
-
-  useEffect(() => {
-    console.log('[GMA] origin →', origin);
-  }, [origin]);
-  useEffect(() => {
-    console.log('[GMA] destination →', destination);
-  }, [destination]);
 
   // Refresh sun position so background routing stays in sync as the day passes.
   useEffect(() => {
@@ -534,11 +502,6 @@ export default function App() {
 
   // ---- route fetch ----
   useEffect(() => {
-    console.log('[GMA] Route-fetch effect triggered.', {
-      hasOrigin: !!origin,
-      hasDestination: !!destination,
-      travelMode,
-    });
     if (!origin || !destination) {
       setCandidates([]);
       setNavigating(false);
@@ -549,7 +512,6 @@ export default function App() {
     fetchCandidateRoutes(origin.point, destination.point, travelMode, apiKey)
       .then((c) => {
         if (cancelled) return;
-        console.log(`[GMA] fetchCandidateRoutes returned ${c.length} candidate(s)`);
         setCandidates(c);
         setSelectedRouteIdx(0);
       })
@@ -763,13 +725,6 @@ export default function App() {
       height: b.height,
       footprint: b.polygon,
     }));
-    if (solarBuildings.length > 0) {
-      console.log('[GMA] Augmenting OSM buildings with Solar API buildings', {
-        osm: overpass.buildings.length,
-        solar: solarBuildings.length,
-        heights: solarBuildings.map((b) => Math.round(b.height)),
-      });
-    }
     return [...overpass.buildings, ...solarBuildings];
   }, [overpass.buildings, solarApi.buildings]);
 
@@ -818,45 +773,15 @@ export default function App() {
     // /arrival time, fall back to a default 30 % — current cloud cover
     // tells us nothing about conditions two hours from now, and the
     // Weather API doesn't yet expose hourly forecasts in this app.
-    // 30 % is a clear-sky-leaning default that lets glare actually
-    // render so the demo doesn't go dark whenever the user picks a
-    // future time slot.
-    const cloudSource: 'live' | 'planned-default' =
-      plannedTime != null ? 'planned-default' : 'live';
     const cloudCover =
-      cloudSource === 'planned-default' ? 30 : (weather?.cloudCoverPct ?? 0);
+      plannedTime != null ? 30 : (weather?.cloudCoverPct ?? 0);
     const buildings = overpass.buildings;
-
-    // Gate diagnostics — fires every dep change so the user can see why
-    // glare is empty even before any compute has fired.
-    console.log('[GMA] Glass glare: gate check', {
-      sunElevationDeg: Number(sunElev.toFixed(1)),
-      sunAzimuthDeg: Math.round(sunAz),
-      cloudCoverPct: Math.round(cloudCover),
-      cloudSource,
-      osmBuildings: buildings.length,
-      gateSunOK: sunElev >= 10,
-      gateCloudOK: cloudCover <= 80,
-      gateBuildingsOK: buildings.length > 0,
-    });
-
-    if (buildings.length === 0) {
-      console.log(
-        '[GMA] Glass glare: waiting — OSM buildings array is still empty (Overpass not back yet).',
-      );
-      return;
-    }
+    if (buildings.length === 0) return;
     if (sunElev < 10) {
-      console.log(
-        `[GMA] Glass glare: skipped — sun elevation ${sunElev.toFixed(1)}° below 10° threshold.`,
-      );
       if (glareHotspots.length !== 0) setGlareHotspots([]);
       return;
     }
     if (cloudCover > 80) {
-      console.log(
-        `[GMA] Glass glare: skipped — cloud cover ${Math.round(cloudCover)}% above 80% threshold.`,
-      );
       if (glareHotspots.length !== 0) setGlareHotspots([]);
       return;
     }
@@ -878,44 +803,16 @@ export default function App() {
       }
     }
 
-    // Classifier diagnostic — surface the first ~10 matches with the
-    // rule that fired so the user can verify Midtown towers are being
-    // hit by name match or tag match (not just hash-roulette guesses).
-    if (glassMatches.length > 0) {
-      console.log(
-        `[GMA] Glass glare: classifier matched ${glassMatches.length} of ${buildings.length} buildings`,
-      );
-      console.table(
-        glassMatches.slice(0, 12).map((m) => ({
-          id: m.building.id,
-          name: m.building.name ?? '(unnamed)',
-          heightM: Math.round(m.building.height),
-          reason: m.reason,
-          detail: m.detail,
-        })),
-      );
-    } else {
-      console.log(
-        `[GMA] Glass glare: classifier matched 0 of ${buildings.length} buildings. ` +
-          'No explicit glass tags, no name matches, no untagged-post-2000 hits. ' +
-          'Likely the viewport is over a low-density / pre-2000 / poorly-tagged area.',
-      );
+    if (glassMatches.length === 0) {
       if (glareHotspots.length !== 0) setGlareHotspots([]);
       return;
     }
 
     const hotspots: GlareHotspot[] = [];
-    let dropped = 0;
     for (const m of glassMatches) {
       const h = computeGlareHotspot(m.building, sunAz, sunElev);
       if (h) hotspots.push(h);
-      else dropped++;
     }
-    console.log(
-      `[GMA] Glass glare: computed ${hotspots.length} hotspots from ${glassMatches.length} glass buildings ` +
-        `(${dropped} dropped — short / no sun-facing wall / footprint < 2 pts), ` +
-        `at sun ${Math.round(sunAz)}°/${sunElev.toFixed(0)}°.`,
-    );
     setGlareHotspots(hotspots);
     // glareHotspots intentionally excluded from deps — we read it inside
     // the effect only to decide whether to commit an empty array, never
@@ -1012,42 +909,12 @@ export default function App() {
   }, [result]);
 
   // Diagnostic: log route scores whenever the ranking changes. This is
-  // the third of the three verification log lines spec'd for the AI
-  // chat → route update flow — it confirms `scoreAndRankRoutes` is
-  // actually re-running with the new weights after a Gemini submit.
-  useEffect(() => {
-    if (!result || result.routes.length === 0) return;
-    const scoreSummary = result.routes
-      .map((r, i) => `route ${i} score ${r.hlciCost.toFixed(3)}`)
-      .join(', ');
-    console.log(`[GMA] Routes re-ranked: ${scoreSummary}`);
-  }, [result]);
-
   // Mirror `result` into a ref so the demo sequence sees live data at
   // every scheduled step (the useCallback below captures `result` once
   // at creation; routes load asynchronously after the demo starts).
   useEffect(() => {
     resultRef.current = result;
   }, [result]);
-
-  // Diagnostic: surface the actual polyline shape when the user picks a
-  // route. A real Routes API walking polyline is 50–200 points; 2 points
-  // means we fell back to the straight-line fixture in hlciRouter.
-  useEffect(() => {
-    if (!selectedRoute) return;
-    const p = selectedRoute.polyline;
-    console.log('[GMA] Selected route polyline:', {
-      idx: safeIdx,
-      label: selectedRoute.label,
-      points: p.length,
-      first: p[0],
-      mid: p[Math.floor(p.length / 2)],
-      last: p[p.length - 1],
-      distanceM: selectedRoute.distanceMeters,
-      durationS: selectedRoute.durationSeconds,
-      meanSunExposure: selectedRoute.meanSunExposure,
-    });
-  }, [selectedRoute, safeIdx]);
 
   // ---- per-segment route colors (sun mode uses shadows + trees + solar) --
   const coloringMode: ColoringMode =
@@ -1283,19 +1150,6 @@ export default function App() {
         }
         if (response.mode === 'routing') {
           const mapped = mapInterpretation(response.interpretation);
-          // The Gemini raw response — exact shape the user asked for
-          // in the verification log spec.
-          console.log('[GMA] Gemini raw response:', {
-            mode: 'routing',
-            sunPreference: response.interpretation.sunPreference,
-            windPreference: response.interpretation.windPreference,
-            rainPreference: response.interpretation.rainPreference,
-            intensity: response.interpretation.intensity,
-            urgency: response.interpretation.urgency,
-            originQuery: response.interpretation.originQuery,
-            destinationQuery: response.interpretation.destinationQuery,
-            reasoning: response.reasoning,
-          });
 
           // ── Auto-fill origin/destination from Gemini extraction ──
           // When the prompt names a starting point or destination, the
@@ -1317,16 +1171,9 @@ export default function App() {
           if (originResult && response.interpretation.originQuery) {
             setOrigin({
               point: { lat: originResult.lat, lng: originResult.lng },
-              // Use the Gemini-extracted name as the display label —
-              // Google's `formatted_address` for "One Vanderbilt" is
-              // "1 Vanderbilt Ave, New York, NY 10017, USA" which is
-              // longer and less recognizable than the user's wording.
               label: response.interpretation.originQuery,
             });
             setOriginFlashKey((k) => k + 1);
-            console.log(
-              `[GMA] AI auto-set origin: "${response.interpretation.originQuery}" → (${originResult.lat.toFixed(4)}, ${originResult.lng.toFixed(4)})`,
-            );
           }
           if (destinationResult && response.interpretation.destinationQuery) {
             setDestination({
@@ -1334,9 +1181,6 @@ export default function App() {
               label: response.interpretation.destinationQuery,
             });
             setDestinationFlashKey((k) => k + 1);
-            console.log(
-              `[GMA] AI auto-set destination: "${response.interpretation.destinationQuery}" → (${destinationResult.lat.toFixed(4)}, ${destinationResult.lng.toFixed(4)})`,
-            );
           }
 
           // CRITICAL FIX: React skips re-renders when setState is
@@ -1353,9 +1197,6 @@ export default function App() {
           window.setTimeout(() => {
             setFilterMode(mapped.filterMode);
             setIntensityMultiplier(mapped.intensityMultiplier);
-            console.log(
-              `[GMA] Filter applied: ${mapped.filterMode} intensity: ${mapped.intensityMultiplier}`,
-            );
           }, 100);
 
           setChatMessages((prev) => [
@@ -1364,10 +1205,6 @@ export default function App() {
           ]);
           return;
         }
-        console.log('[GMA] Gemini raw response:', {
-          mode: 'qa',
-          answer: response.answer,
-        });
         // QA intent.
         setChatMessages((prev) => [
           ...prev,
@@ -1416,7 +1253,6 @@ export default function App() {
   // entered. Field-fill at t=22 is deterministic (not gated on Gemini)
   // so the visual lands exactly on cue regardless of network latency.
   const runDemoSequence = useCallback(() => {
-    console.log('[GMA] Demo sequence starting');
     setDemoRunning(true);
     // Wipe any leftover schedule + rAF handles before starting fresh.
     for (const id of demoTimeoutsRef.current) {
@@ -1533,7 +1369,6 @@ export default function App() {
       setDestinationFlashKey((k) => k + 1);
       setFilterMode('avoid-sun');
       setIntensityMultiplier(1.5);
-      console.log('[GMA] Demo t=22: fields filled + avoid-sun applied');
       // Real Gemini call for the reasoning bubble — landing in chat
       // sometime in [t≈24, t≈28] which is the t=30 "conversation
       // visible" beat in the spec.
@@ -1603,14 +1438,12 @@ export default function App() {
     schedule(46_000, () => {
       setFilterMode('avoid-wind');
       setIntensityMultiplier(1.0);
-      console.log('[GMA] Demo: filter → avoid-wind');
     });
 
     // ─── t = 50 s : filter → sunny-spot ────────────────────────
     schedule(50_000, () => {
       setFilterMode('sunny-spot');
       setIntensityMultiplier(1.0);
-      console.log('[GMA] Demo: filter → sunny-spot');
     });
 
     // ─── t = 54 s : back to avoid-sun + beauty shot pull-out ───
@@ -1770,7 +1603,6 @@ export default function App() {
       coloredSegments.length > 0
     ) {
       const NEAR_M = 150;
-      let outdoorSunnyCount = 0;
       for (const spot of overpass.outdoorSpots) {
         let bestDist = Infinity;
         let bestSunny = false;
@@ -1791,14 +1623,8 @@ export default function App() {
         }
         if (bestDist <= NEAR_M && bestSunny) {
           spots.push({ lat: spot.lat, lng: spot.lng });
-          outdoorSunnyCount++;
         }
       }
-      console.log('[GMA] Sunny Spot outdoor scan', {
-        outdoorSpotsFetched: overpass.outdoorSpots.length,
-        outdoorSpotsSunny: outdoorSunnyCount,
-        routeSpots: spots.length - outdoorSunnyCount,
-      });
     }
 
     return spots.length > 0 ? spots : null;
@@ -2160,10 +1986,7 @@ export default function App() {
         {isDemoMode && !demoRunning && (
           <button
             type="button"
-            onClick={() => {
-              console.log('[GMA] Start Demo clicked (sidebar button)');
-              runDemoSequence();
-            }}
+            onClick={() => runDemoSequence()}
             className="gma-press flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold uppercase tracking-[0.18em]"
             style={{
               background: 'rgba(30, 41, 59, 0.06)',

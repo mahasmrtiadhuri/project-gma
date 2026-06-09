@@ -34,13 +34,11 @@ export function useCurrentLocation(): CurrentLocationState {
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
-      console.log('[GMA] Geolocation API not available in this browser');
       setState({ point: null, status: 'denied' });
       return;
     }
 
     let cancelled = false;
-    console.log('[GMA] Requesting geolocation permission…');
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -49,7 +47,6 @@ export function useCurrentLocation(): CurrentLocationState {
           lng: pos.coords.longitude,
           lat: pos.coords.latitude,
         };
-        console.log('[GMA] Geolocation resolved:', point);
         setState({ point, status: 'available' });
       },
       (error) => {

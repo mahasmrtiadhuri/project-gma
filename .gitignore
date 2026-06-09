@@ -33,5 +33,10 @@ pnpm-debug.log*
 # PWA generated
 dev-dist
 
-# Claude Code local settings (machine-specific hooks, permissions)
-.claude/settings.local.json
+# local agent / editor scratch dirs
+.claude/
+.cursor/
+.aider*
+
+# screenshots placeholder (drop binaries via Git LFS if added)
+docs/screenshots/*.local.*

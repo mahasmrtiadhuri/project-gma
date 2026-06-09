@@ -1,8 +1,23 @@
 {
   "name": "project-gma",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
+  "description": "Generative Micro-Climate Architect — geospatial micro-climate simulation and routing engine for NYC. Glass-glare ray tracing, Venturi wind-canyon approximation, conversational routing via Gemini.",
+  "author": "Maha Smrti Adhuri <mahasmrtiadhuri@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "deck.gl",
+    "google-maps-platform",
+    "photorealistic-3d-tiles",
+    "webgl",
+    "gemini",
+    "geospatial",
+    "routing",
+    "micro-climate",
+    "ray-tracing"
+  ],
+  "homepage": "https://github.com/your-handle/project-gma",
   "scripts": {
     "dev": "vite",
     "dev:all": "concurrently -n vite,solar -c blue,yellow \"npm:dev\" \"npm:start:server\"",

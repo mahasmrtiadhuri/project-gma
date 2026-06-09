@@ -88,7 +88,6 @@ function ensurePolling(apiKey: string, lat: number, lng: number): void {
       void dedupedFetch(pollContext.apiKey, pollContext.lat, pollContext.lng);
     }
   }, POLL_INTERVAL_MS);
-  console.log('[GMA] Weather polling started (single shared timer)');
 }
 
 function maybeStopPolling(): void {
@@ -96,7 +95,6 @@ function maybeStopPolling(): void {
     window.clearInterval(pollTimerId);
     pollTimerId = null;
     pollContext = null;
-    console.log('[GMA] Weather polling stopped (no subscribers)');
   }
 }
 
@@ -159,10 +157,6 @@ async function fetchWeather(
     }
 
     const raw: unknown = await response.json();
-    // Logged every poll so it's easy to verify live data in DevTools. ~1 line
-    // per 10 minutes — not noisy.
-    console.log('[GMA] Weather API raw response:', raw);
-
     const snap = normalize(raw as GoogleWeatherResponse);
     if (snap) return snap;
 
@@ -212,7 +206,6 @@ async function fetchOpenMeteo(
       return null;
     }
     const raw: unknown = await response.json();
-    console.log('[GMA] Weather: using Open-Meteo fallback', raw);
     return normalizeOpenMeteo(raw as OpenMeteoResponse);
   } catch (err) {
     console.warn('[GMA] Open-Meteo fetch threw:', err);

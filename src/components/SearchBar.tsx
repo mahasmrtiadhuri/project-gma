@@ -361,11 +361,6 @@ function PlaceField({
         place.formattedAddress ??
         prediction.text?.text ??
         'Place';
-      console.log(`[GMA] Picked (${ariaLabel}):`, {
-        lng: loc.lng(),
-        lat: loc.lat(),
-        label,
-      });
       setText(label);
       callbackRef.current({
         point: { lng: loc.lng(), lat: loc.lat() },
