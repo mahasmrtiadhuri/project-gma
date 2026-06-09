@@ -4766,3 +4766,34 @@ The taller panel ensures the user's typed prompt (long, wraps to several lines) 
 ### Build status
 - `npx tsc -b` clean
 - `npx vite build` clean (existing >500 kB chunk advisory only)
+
+---
+
+## 2026-06-09 — README.md for the GitHub repo
+
+Authored a professional [README.md](README.md) at the repo root. Sections per spec:
+
+- **Header** — project name, "Routing for how a city feels" tagline, shields.io badges (live demo, React 19, TypeScript 5.7, Vite 6, deck.gl 9, WebGL 2.0, Gemini 2.5 Flash, Google Maps Platform).
+- **One-line description** — what GMA does in plain English.
+- **The Problem** — 2-paragraph framing of the Physical Comfort Gap (glass-glare +15°F, Venturi 2×+ wind amplification, weather-app blind spots).
+- **Key Features** — six bullets with the actual physics formulas inline:
+  - Glass-glare reflection ray: `R = I − 2(I · N̂)N̂`
+  - Venturi continuity: `v_local = v_ambient × (W_entry / W_canyon)`
+  - HLCI four-axis composite + intensity multiplier
+  - One-call Gemini structured-output extraction
+  - Live sun + Open-Meteo/METAR coupling
+  - Mobile-first 60 FPS with bounding-box culling + GLSL
+- **Tech Stack** — table with Framework / Styling / 3D Rendering / 3D Data / Physics / Baseline Shade / Wind Data / Routing / Geocoding / Place Search / AI Model / PWA / Hosting rows.
+- **Architecture** — the three-layer ASCII diagram (Data Ingestion → Physics & Shader Simulation → Agentic Interface & Routing).
+- **Screenshots** — placeholder table (Empty start / AI chat hero / 3-route overview / avoid-sun close-up) with a note to drop captures into `/docs/screenshots/`.
+- **Getting Started** — clone / install / .env / `npm run dev` vs `npm run dev:all` / `npm run build` / `npm run preview`.
+- **Environment Variables** — table of the two required keys (`VITE_GOOGLE_MAPS_API_KEY`, `VITE_GEMINI_API_KEY`) with source links, plus the six-API enable list with deep links to each Cloud Console library page.
+- **How It Works** — four technical subsections: HLCI scoring formula breakdown, glass-glare physics walkthrough, Venturi math step-by-step, one-prompt routing pipeline with an example JSON response.
+- **Roadmap** — Micro-Climate Sandbox (.gltf upload), Patio Gold-Rush, Live City Mesh (Overpass replacement for the curated tower list), multi-city expansion, AR mode.
+- **Author** — name, email, LinkedIn placeholder, "open to senior software / 3D / geospatial / AI-product roles" note.
+
+Voice: confident, technical, senior-engineer tone. No fluff. No mention of AI-assisted authorship.
+
+### Build status
+- `npx tsc -b` clean
+- `npx vite build` clean (existing >500 kB chunk advisory only)
