@@ -2,7 +2,6 @@
 
 **Routing for how a city feels.**
 
-[![Live Demo](https://img.shields.io/badge/demo-live-success?style=flat-square)](#)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -14,6 +13,10 @@
 A geospatial micro-climate simulation and routing engine for New York City. GMA combines Google's Photorealistic 3D Tiles, GPU-accelerated solar ray-tracing, real-time wind-canyon approximation, and a conversational agentic interface to compute Hyper-Localized Comfort Indices (HLCI) at the sidewalk level — then routes you through them.
 
 ---
+
+## Project status
+
+An experimental geospatial application. Environmental scores are model estimates, not measured street-level conditions. API integrations require configuration. The repository does not yet include reproducible accuracy or frame-rate benchmarks.
 
 ## The Problem
 
@@ -43,7 +46,7 @@ GMA closes that gap.
 
 - **Live Sun + Weather Coupling.** Solar azimuth/elevation drives shadow projection, glare classification, and route coloring every frame; Open-Meteo + METAR cloud-cover blending grounds the comfort scoring in real atmospheric conditions.
 
-- **Mobile-First, 60 FPS.** Bounding-box viewport culling on 3D tile loading, deck.gl color transitions at 400 ms interpolation, GLSL fragment shaders for all expensive per-pixel math. Tested at sustained 60 FPS on mid-range mobile hardware.
+- **Interactive map interface.** Viewport-aware rendering and animated route overlays. Performance depends on device, viewport, data volume, and enabled integrations; no reproducible performance benchmark is included yet.
 
 ---
 
@@ -105,18 +108,6 @@ Everything physics-related runs client-side on the GPU. The Solar API call is th
 
 ---
 
-## Screenshots
-
-> _Screenshots coming soon — drop your captures into `/docs/screenshots/` and reference them here._
-
-| Empty start (Midtown corridor) | AI chat — typed prompt + Gemini reasoning |
-|---|---|
-| _[screenshot]_ | _[screenshot]_ |
-
-| Three-route overview with glare hotspots | Avoid-sun close-up with segment breakdown |
-|---|---|
-| _[screenshot]_ | _[screenshot]_ |
-
 ---
 
 ## Getting Started
@@ -125,7 +116,7 @@ Everything physics-related runs client-side on the GPU. The Solar API call is th
 
 ```bash
 # clone + install
-git clone https://github.com/your-handle/project-gma.git
+git clone https://github.com/mahasmrtiadhuri/project-gma.git
 cd project-gma
 npm install
 
