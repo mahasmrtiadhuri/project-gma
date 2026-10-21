@@ -17,7 +17,7 @@
     "micro-climate",
     "ray-tracing"
   ],
-  "homepage": "https://github.com/your-handle/project-gma",
+  "homepage": "https://github.com/mahasmrtiadhuri/project-gma",
   "scripts": {
     "dev": "vite",
     "dev:all": "concurrently -n vite,solar -c blue,yellow \"npm:dev\" \"npm:start:server\"",
